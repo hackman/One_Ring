@@ -42,7 +42,7 @@ So I have a local cache when querying the whois DB.
 ## Build & run
 
 ```bash
-go build ./whoisd
+go build -o whoisd .
 ./whoisd -config config.yaml
 ```
 
@@ -87,7 +87,7 @@ is valid.
 ## Layout
 
 ```
-whoisd/                entrypoint + signal handling + refresh loop
+main.go                entrypoint + signal handling + refresh loop
 internal/config/       YAML loader + defaults + validation
 internal/acl/          BERT prefix trie (allow / deny)
 internal/ratelimit/    token bucket + idle GC
