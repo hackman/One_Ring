@@ -10,45 +10,46 @@
 <meta property="og:type" content="website">
 <style>
   :root {
-    --bg:       #0a0d14;
-    --bg-2:     #11161f;
-    --bg-3:     #1a212f;
-    --fg:       #e8edf5;
-    --fg-dim:   #93a0b6;
-    --gold:     #d6a85a;
-    --gold-2:   #f1cc7e;
-    --accent:   #4cc2ff;
-    --accent-2: #b18cff;
-    --good:     #5ddc8c;
-    --border:   #24304a;
-    --mono:     ui-monospace, SFMono-Regular, Menlo, Consolas, "JetBrains Mono", monospace;
-    --max-w:    1100px;
+    --bg-0:        #0b1020;
+    --bg-1:        #121a35;
+    --panel:       rgba(255, 255, 255, 0.04);
+    --panel-2:     rgba(255, 255, 255, 0.06);
+    --panel-border:rgba(255, 255, 255, 0.08);
+    --fg:          #e6ecff;
+    --fg-dim:      #8b95b8;
+    --accent:      #6ea8ff;
+    --accent-2:    #b388ff;
+    --ok:          #4ade80;
+    --warn:        #fbbf24;
+    --bad:         #f87171;
+    --shadow:      0 10px 40px rgba(0, 0, 0, 0.45);
+    --mono:        ui-monospace, SFMono-Regular, Menlo, Consolas, "JetBrains Mono", monospace;
+    --max-w:       1100px;
   }
   * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; background: var(--bg); color: var(--fg);
-    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+    color: var(--fg);
+    background:
+      radial-gradient(1200px 800px at 10% -10%, rgba(110, 168, 255, 0.18), transparent 60%),
+      radial-gradient(900px 700px at 110% 10%, rgba(179, 136, 255, 0.16), transparent 60%),
+      linear-gradient(180deg, var(--bg-0), var(--bg-1));
+    background-attachment: fixed;
     scroll-behavior: smooth;
   }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; text-decoration-color: var(--accent-2); }
-  ::selection { background: rgba(214,168,90,.35); }
+  ::selection { background: rgba(110,168,255,.35); }
 
-  /* Background flourish: a soft radial gold ring */
-  body::before {
-    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-    background:
-      radial-gradient(circle at 70% -10%, rgba(214,168,90,.18), transparent 55%),
-      radial-gradient(circle at -10% 100%, rgba(177,140,255,.10), transparent 60%),
-      radial-gradient(circle at 100% 100%, rgba(76,194,255,.10), transparent 55%);
-  }
   main { position: relative; z-index: 1; }
 
   nav {
     position: sticky; top: 0; z-index: 5;
-    background: rgba(10,13,20,.7);
+    background: rgba(11, 16, 32, 0.7);
     backdrop-filter: saturate(140%) blur(10px);
     -webkit-backdrop-filter: saturate(140%) blur(10px);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--panel-border);
   }
   .nav-inner {
     max-width: var(--max-w); margin: 0 auto;
@@ -61,11 +62,11 @@
   }
   .ring {
     width: 22px; height: 22px; border-radius: 50%;
-    border: 2px solid var(--gold);
+    border: 2px solid var(--accent);
     box-shadow:
-      0 0 12px rgba(214,168,90,.5),
-      inset 0 0 8px rgba(214,168,90,.4);
-    background: radial-gradient(circle at 30% 30%, rgba(241,204,126,.6), transparent 60%);
+      0 0 12px rgba(110,168,255,.5),
+      inset 0 0 8px rgba(179,136,255,.4);
+    background: radial-gradient(circle at 30% 30%, rgba(179,136,255,.6), transparent 60%);
   }
   .nav-links { display: flex; gap: 22px; font-size: 14px; color: var(--fg-dim); }
   .nav-links a { color: var(--fg-dim); }
@@ -78,16 +79,18 @@
   }
   .eyebrow {
     display: inline-block;
-    color: var(--gold); font-size: 12px; letter-spacing: 3px;
+    color: var(--accent); font-size: 12px; letter-spacing: 3px;
     text-transform: uppercase; margin-bottom: 18px;
-    padding: 6px 12px; border: 1px solid rgba(214,168,90,.35);
-    border-radius: 999px; background: rgba(214,168,90,.06);
+    padding: 6px 12px;
+    border: 1px solid rgba(110,168,255,.35);
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(110,168,255,0.12), rgba(179,136,255,0.12));
   }
   h1.title {
     font-size: clamp(40px, 6vw, 76px);
     line-height: 1.05; margin: 0 0 18px;
     letter-spacing: -.02em;
-    background: linear-gradient(180deg, #fff 0%, var(--gold-2) 100%);
+    background: linear-gradient(135deg, #fff 0%, var(--accent) 50%, var(--accent-2) 100%);
     -webkit-background-clip: text; background-clip: text;
     color: transparent;
   }
@@ -98,7 +101,7 @@
   }
   .quote {
     margin: 24px auto 0; max-width: 600px;
-    color: var(--gold); font-style: italic;
+    color: var(--accent-2); font-style: italic;
   }
   .cta-row {
     display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
@@ -106,28 +109,41 @@
   }
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
-    padding: 12px 22px; border-radius: 8px;
-    border: 1px solid var(--border); background: var(--bg-2);
+    padding: 12px 22px; border-radius: 12px;
+    border: 1px solid var(--panel-border); background: var(--panel);
     color: var(--fg); font-weight: 600; font-size: 15px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     transition: transform .12s ease, border-color .12s ease, background .12s ease;
   }
-  .btn:hover { transform: translateY(-1px); border-color: var(--gold); text-decoration: none; }
-  .btn.primary {
-    background: linear-gradient(180deg, var(--gold) 0%, #b8893e 100%);
-    color: #1a1208; border-color: transparent;
+  .btn:hover {
+    transform: translateY(-1px);
+    border-color: rgba(110,168,255,.55);
+    background: var(--panel-2);
+    text-decoration: none;
   }
-  .btn.primary:hover { background: linear-gradient(180deg, var(--gold-2) 0%, var(--gold) 100%); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(110,168,255,0.85), rgba(179,136,255,0.85));
+    color: #0b1020; border-color: transparent;
+    box-shadow: 0 8px 24px rgba(110,168,255,0.25);
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border-color: transparent;
+  }
 
   .registries {
     display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
     margin-top: 48px;
   }
   .registry {
-    background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px;
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 14px;
     padding: 10px 18px; font-size: 13px; color: var(--fg-dim);
     font-family: var(--mono);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
-  .registry strong { color: var(--gold); margin-right: 8px; }
+  .registry strong { color: var(--accent); margin-right: 8px; }
 
   section {
     max-width: var(--max-w); margin: 0 auto;
@@ -143,15 +159,23 @@
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   }
   .feature {
-    background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-3) 100%);
-    border: 1px solid var(--border); border-radius: 12px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
     padding: 22px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: transform .12s ease, border-color .12s ease;
+  }
+  .feature:hover {
+    transform: translateY(-2px);
+    border-color: rgba(110,168,255,.35);
   }
   .feature .ico {
-    width: 36px; height: 36px; border-radius: 8px;
-    background: rgba(214,168,90,.15);
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, rgba(110,168,255,0.22), rgba(179,136,255,0.22));
     display: flex; align-items: center; justify-content: center;
-    color: var(--gold); margin-bottom: 14px;
+    color: var(--accent); margin-bottom: 14px;
     font-size: 18px; font-weight: 800;
   }
   .feature h3 { margin: 0 0 8px; font-size: 17px; }
@@ -159,64 +183,75 @@
 
   .twocol { display: grid; gap: 28px; grid-template-columns: 1fr 1fr; }
   @media (max-width: 760px) { .twocol { grid-template-columns: 1fr; } }
-  .twocol h3 { margin: 0 0 10px; font-size: 17px; color: var(--gold); }
+  .twocol h3 { margin: 0 0 10px; font-size: 17px; color: var(--accent); }
   .twocol p, .twocol li { color: var(--fg-dim); }
   .twocol ul { padding-left: 20px; }
 
   pre {
-    background: #060912;
-    border: 1px solid var(--border);
-    border-radius: 10px; padding: 18px;
+    background: rgba(11, 16, 32, 0.6);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px; padding: 18px;
     overflow-x: auto;
     font-family: var(--mono); font-size: 13.5px; line-height: 1.6;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
-  code { font-family: var(--mono); color: var(--gold-2); }
+  code { font-family: var(--mono); color: var(--accent); }
   pre code { color: var(--fg); }
-  .tok-kw  { color: #c98aff; }
-  .tok-str { color: #98d68a; }
-  .tok-cmt { color: #6c7a93; font-style: italic; }
-  .tok-num { color: #f0b14f; }
-  .tok-fn  { color: #5ddc8c; }
-  .tok-flag{ color: #4cc2ff; }
+  .tok-kw  { color: var(--accent-2); }
+  .tok-str { color: var(--ok); }
+  .tok-cmt { color: var(--fg-dim); font-style: italic; }
+  .tok-num { color: var(--warn); }
+  .tok-fn  { color: var(--ok); }
+  .tok-flag{ color: var(--accent); }
 
   .demo {
-    background: var(--bg-2); border: 1px solid var(--border);
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
     border-radius: 14px; overflow: hidden;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: var(--shadow);
   }
   .demo header {
     display: flex; align-items: center; gap: 8px;
-    padding: 10px 14px; background: var(--bg-3);
-    border-bottom: 1px solid var(--border);
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--panel-border);
     font-size: 12px; color: var(--fg-dim); font-family: var(--mono);
   }
   .demo header .dot { width: 12px; height: 12px; border-radius: 50%; }
-  .demo header .dot.r { background: #ff6b6b; }
-  .demo header .dot.y { background: #f0b14f; }
-  .demo header .dot.g { background: #5ddc8c; }
+  .demo header .dot.r { background: var(--bad); }
+  .demo header .dot.y { background: var(--warn); }
+  .demo header .dot.g { background: var(--ok); }
   .demo header .title { margin-left: 10px; }
+  .demo pre { border: none; border-radius: 0; background: rgba(11, 16, 32, 0.4); backdrop-filter: none; -webkit-backdrop-filter: none; }
 
   .compare {
     display: grid; grid-template-columns: 1.1fr 1fr;
     gap: 0;
-    border: 1px solid var(--border); border-radius: 12px;
-    overflow: hidden; background: var(--bg-2);
+    border: 1px solid var(--panel-border); border-radius: 14px;
+    overflow: hidden;
+    background: var(--panel);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
   @media (max-width: 760px) { .compare { grid-template-columns: 1fr; } }
   .compare > div { padding: 22px; }
-  .compare .left  { border-right: 1px solid var(--border); }
+  .compare .left  { border-right: 1px solid var(--panel-border); }
   .compare h4 {
     margin: 0 0 12px; font-size: 14px; letter-spacing: 1.2px;
     text-transform: uppercase; color: var(--fg-dim);
   }
   .compare ul { margin: 0; padding-left: 18px; color: var(--fg-dim); }
   .compare li { margin-bottom: 8px; }
-  .compare .left li::marker { color: #ff6b6b; }
-  .compare .right li::marker { color: var(--good); }
+  .compare .left li::marker { color: var(--bad); }
+  .compare .right li::marker { color: var(--ok); }
 
   footer {
     text-align: center; padding: 60px 24px 40px;
     color: var(--fg-dim); font-size: 13px;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--panel-border);
   }
   footer a { color: var(--fg-dim); }
 </style>
@@ -321,7 +356,7 @@
         <pre><code><span class="tok-cmt"># Go 1.22+</span>
 git clone https://github.com/hackman/One_Ring.git
 <span class="tok-fn">cd</span> One_Ring
-go build ./whoisd</code></pre>
+go build -o whoisd .</code></pre>
 
         <h3 style="margin-top:24px">Run</h3>
         <pre><code>./whoisd <span class="tok-flag">-config</span> config.yaml</code></pre>
@@ -357,14 +392,14 @@ open http://127.0.0.1:8080/</code></pre>
         <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
         <span class="title">whoisd · server status</span>
       </header>
-      <pre style="margin:0;border:none;border-radius:0;background:#060912"><code><span style="color:#8b97a8">live  qps   total   bytes-out   denied  errors</span>
-   <span style="color:#4cc2ff">12</span>  <span style="color:#b18cff">187.4</span>  <span style="color:#fff">2,461,902</span>   <span style="color:#fff">14.8 GiB</span>     <span style="color:#f0b14f">37</span>     <span style="color:#ff6b6b">2</span>
+      <pre><code><span style="color:#8b95b8">live  qps   total   bytes-out   denied  errors</span>
+   <span style="color:#6ea8ff">12</span>  <span style="color:#b388ff">187.4</span>  <span style="color:#e6ecff">2,461,902</span>   <span style="color:#e6ecff">14.8 GiB</span>     <span style="color:#fbbf24">37</span>     <span style="color:#f87171">2</span>
 
-<span style="color:#8b97a8">#    src              query            state       dur     out</span>
-<span style="color:#fff">214  198.51.100.7    </span> 8.8.8.8           <span style="color:#5ddc8c">writing</span>     <span style="color:#fff">0.04s</span>   <span style="color:#fff">3.2 KiB</span>
-<span style="color:#fff">213  203.0.113.42    </span> AS3333            <span style="color:#5ddc8c">writing</span>     <span style="color:#fff">0.11s</span>   <span style="color:#fff">2.1 KiB</span>
-<span style="color:#fff">212  2001:db8::42    </span> 193.0.6.139       <span style="color:#b18cff">looking_up</span>  <span style="color:#fff">0.02s</span>   <span style="color:#fff">0 B</span>
-<span style="color:#fff">211  10.0.0.5        </span> ARIN-OPS          <span style="color:#4cc2ff">reading</span>     <span style="color:#fff">1.4 s</span>   <span style="color:#fff">0 B</span></code></pre>
+<span style="color:#8b95b8">#    src              query            state       dur     out</span>
+<span style="color:#e6ecff">214  198.51.100.7    </span> 8.8.8.8           <span style="color:#4ade80">writing</span>     <span style="color:#e6ecff">0.04s</span>   <span style="color:#e6ecff">3.2 KiB</span>
+<span style="color:#e6ecff">213  203.0.113.42    </span> AS3333            <span style="color:#4ade80">writing</span>     <span style="color:#e6ecff">0.11s</span>   <span style="color:#e6ecff">2.1 KiB</span>
+<span style="color:#e6ecff">212  2001:db8::42    </span> 193.0.6.139       <span style="color:#b388ff">looking_up</span>  <span style="color:#e6ecff">0.02s</span>   <span style="color:#e6ecff">0 B</span>
+<span style="color:#e6ecff">211  10.0.0.5        </span> ARIN-OPS          <span style="color:#6ea8ff">reading</span>     <span style="color:#e6ecff">1.4 s</span>   <span style="color:#e6ecff">0 B</span></code></pre>
     </div>
   </section>
 
