@@ -295,14 +295,19 @@ func pick(query string, objs []*ripe.Object, flags queryFlags) []*ripe.Object {
 	return objs[len(objs)-1:]
 }
 
-// writeRelated appends person/role objects referenced by admin-c/tech-c.
-// Returns the number of related objects appended.
+// writeRelated appends person/role objects referenced by admin-c/tech-c/
+// abuse-c/zone-c attributes. Returns the number of related objects
+// appended.
+//
+// The four contact-handle attributes are pre-extracted into Object.Handles
+// during parsing, so this hot path reads them as direct field access
+// instead of scanning Raw on every query.
 func writeRelated(b *strings.Builder, store *ripe.Store, objs []*ripe.Object) int {
 	seen := make(map[string]bool)
 	added := 0
 	for _, o := range objs {
-		for _, attr := range []string{"admin-c", "tech-c", "abuse-c", "zone-c"} {
-			for _, h := range o.LookupAll(attr) {
+		for slot := 0; slot < 4; slot++ {
+			for _, h := range o.Handles[slot] {
 				h = strings.ToUpper(strings.TrimSpace(h))
 				if h == "" || seen[h] {
 					continue
