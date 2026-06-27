@@ -100,6 +100,8 @@ internal/stats/        live registry, JSON dumper, embedded HTTP dashboard
 
 - Memory footprint scales with the size of the merged store. With all five
   RIRs loaded, expect ~20–30 GiB resident.
+- Because of the large DB sets that have to be loaded, the startup time is 
+  quite long.
 - Binding to port 43 requires either root or
   `setcap cap_net_bind_service=+ep ./whoisd`.
 
