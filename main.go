@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/netip"
 	"os"
@@ -119,6 +120,12 @@ func statsOrNil(enabled bool, r *stats.Registry) *stats.Registry {
 }
 
 func newLogger(level string) *slog.Logger {
+	// "none" disables logging entirely by sending records to io.Discard at
+	// the highest possible severity so no record is ever emitted.
+	if level == "none" || level == "off" || level == "silent" {
+		h := slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.Level(127)})
+		return slog.New(h)
+	}
 	var lvl slog.Level
 	switch level {
 	case "debug":
