@@ -1,0 +1,126 @@
+# One Ring - whois  ·  whoisd configuration
+
+server:
+  # bind address (host:port). 43 is the standard WHOIS port.
+  bind: "0.0.0.0:4343"
+  read_timeout:  "5s"
+  write_timeout: "30s"
+  max_concurrent: 1024
+  max_query_bytes: 512
+
+dbase:
+  cache_dir: "./var/dbase"
+
+  # How often to poll each upstream for new data. Polls use If-Modified-Since
+  # and are very cheap (HEAD-equivalent) when nothing changed, so feel free
+  # to set this aggressively (15m..1h).
+  poll_interval: "1h"
+
+  # All five RIRs publish a fresh dump once a day, generally between 23:00
+  # and 02:00 UTC. We anchor one guaranteed refresh attempt at this UTC
+  # time-of-day so we catch the new release promptly even if poll_interval
+  # is long. Set to "" to disable the anchor.
+  daily_at: "03:00"
+
+  # Backoff between attempts after a failed refresh.
+  retry_on_failure: "5m"
+
+  # Upstream databases. Set enabled:false on any source you don't need.
+  # `format` is either:
+  #   split  - one .gz per RPSL class, named ${db_name}.db.${class}.gz under url
+  #   single - one big .gz at url
+  sources:
+    - name:    ripe
+      enabled: true
+      format:  split
+      url:     "https://ftp.ripe.net/ripe/dbase/split"
+      db_name: ripe
+      classes:
+        - inetnum
+        - inet6num
+        - route
+        - route6
+        - aut-num
+        - as-block
+        - as-set
+        - domain
+        - mntner
+        - organisation
+        - person
+        - role
+        - irt
+        - key-cert
+        - filter-set
+        - inet-rtr
+        - peering-set
+        - route-set
+        - rtr-set
+
+    - name:    apnic
+      enabled: true
+      format:  split
+      url:     "https://ftp.apnic.net/apnic/whois"
+      db_name: apnic
+      classes:
+        - inetnum
+        - inet6num
+        - route
+        - route6
+        - aut-num
+        - as-block
+        - as-set
+        - domain
+        - mntner
+        - organisation
+        - person
+        - role
+        - irt
+        - key-cert
+        - filter-set
+        - inet-rtr
+        - peering-set
+        - route-set
+        - rtr-set
+
+    - name:    arin
+      enabled: true
+      format:  single
+      url:     "https://ftp.arin.net/pub/rr/arin.db.gz"
+
+    - name:    afrinic
+      enabled: true
+      format:  single
+      url:     "https://ftp.afrinic.net/pub/dbase/afrinic.db.gz"
+
+    - name:    lacnic
+      enabled: true
+      format:  single
+      url:     "https://ftp.lacnic.net/lacnic/dbase/lacnic.db.gz"
+
+acl:
+  default: "allow"
+  allow:
+    - "127.0.0.0/8"
+    - "::1/128"
+    - "10.0.0.0/8"
+    - "192.168.0.0/16"
+    - "172.16.0.0/12"
+  deny: []
+
+rate_limit:
+  enabled: true
+  rps: 5
+  burst: 20
+  v4_prefix: 24
+  v6_prefix: 48
+  idle_ttl: "10m"
+
+stats:
+  enabled: true
+  dump_path: "./var/stats/stats.json"
+  # Sub-second values are allowed (e.g. "200ms", "500ms"). Minimum 50ms.
+  dump_interval: "500ms"
+  http_bind: "127.0.0.1:8080"
+
+log:
+  level: "info"
