@@ -9,7 +9,7 @@ server:
   max_query_bytes: 512
 
 dbase:
-  cache_dir: "./var/dbase"
+  cache_dir: "/var/whoisd"
 
   # How often to poll each upstream for new data. Polls use If-Modified-Since
   # and are very cheap (HEAD-equivalent) when nothing changed, so feel free
@@ -117,10 +117,18 @@ rate_limit:
 
 stats:
   enabled: true
-  dump_path: "./var/stats/stats.json"
+  dump_path: "/var/whoisd/stats.json"
   # Sub-second values are allowed (e.g. "200ms", "500ms"). Minimum 50ms.
   dump_interval: "500ms"
   http_bind: "127.0.0.1:8080"
 
 log:
-  level: "info"
+  # Verbosity. Each level includes everything above it (less verbose).
+  #   debug   - all of the below + cache-hit details and reload-skipped lines
+  #   info    - lifecycle (start/stop), each query, refreshes, schedules
+  #   warn    - recoverable issues only (failed downloads, accept errors,
+  #             ACL denies)
+  #   error   - fatal-ish only (listener failed, server stopped,
+  #             stats subsystem stopped)
+  #   none    - silent (also accepts "off" or "silent")
+  level: "warn"
