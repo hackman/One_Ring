@@ -49,7 +49,8 @@ func TestSnapshot_JSONShape(t *testing.T) {
 	// just smoke-test that all the fields land
 	for _, want := range []string{
 		`"generated_at"`, `"started_at"`, `"uptime_s"`,
-		`"live"`, `"counters"`, `"recent_qps"`,
+		`"live"`, `"counters"`, `"recent_qps"`, `"memory"`,
+		`"virt_bytes"`, `"rss_bytes"`, `"shr_bytes"`,
 		`"queries_total"`, `"bytes_in"`, `"bytes_out"`,
 		`"current_live"`,
 	} {

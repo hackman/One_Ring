@@ -217,6 +217,7 @@ type Snapshot struct {
 	Live         []snapConn     `json:"live"`
 	Counters     sCounters      `json:"counters"`
 	RecentQPS    uint32         `json:"recent_qps"`
+	Memory       MemStats       `json:"memory"`
 	RIPELoaded   string         `json:"dbase_last_loaded,omitempty"`
 	RIPEClasses  map[string]int `json:"class_counts,omitempty"`
 	SourceCounts map[string]int `json:"source_counts,omitempty"`
@@ -268,6 +269,7 @@ func (r *Registry) Snapshot(extra func(*Snapshot)) *Snapshot {
 			CurrentLive:     currentLive,
 		},
 		RecentQPS: r.totals.qpsRing.LastSecond(now),
+		Memory:    readMemStats(),
 	}
 	if extra != nil {
 		extra(s)

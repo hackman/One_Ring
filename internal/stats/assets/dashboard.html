@@ -178,6 +178,47 @@
     display: block; margin-top: 6px;
     width: 100%; height: 32px;
   }
+
+  /* --- tabs --- */
+  .tabs {
+    display: flex; gap: 4px;
+    margin: 22px 0 14px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .tab {
+    background: transparent; color: var(--fg-dim);
+    border: none; padding: 8px 16px;
+    font-size: 13px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 1px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color .12s ease, border-color .12s ease;
+  }
+  .tab:hover { color: var(--fg); }
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .tab-content[hidden] { display: none; }
+
+  /* --- memory cards inside the database tab --- */
+  .mem-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 760px) {
+    .mem-cards { grid-template-columns: 1fr; }
+  }
+
+  /* --- totals row at the bottom of source/class tables --- */
+  tbody tr.totals td {
+    border-top: 1px solid var(--panel-border);
+    border-bottom: none;
+    background: rgba(255,255,255,0.02);
+    font-weight: 600;
+    color: var(--accent);
+  }
 </style>
 </head>
 <body>
@@ -240,48 +281,78 @@
     </div>
   </div>
 
-  <section>
-    <h2>Active connections <span class="count" id="livecount">0</span></h2>
-    <div class="panel">
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>source</th>
-            <th>query</th>
-            <th>state</th>
-            <th style="text-align:right">duration</th>
-            <th style="text-align:right">in</th>
-            <th style="text-align:right">out</th>
-            <th style="text-align:right">rate</th>
-            <th style="text-align:right">objects</th>
-          </tr>
-        </thead>
-        <tbody id="rows"></tbody>
-      </table>
-      <div class="empty" id="empty">no active connections</div>
-    </div>
-  </section>
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="connections" role="tab">Connections</button>
+    <button class="tab" data-tab="database" role="tab">Database</button>
+  </div>
 
-  <section>
-    <h2>Databases</h2>
-    <div class="panel">
-      <table>
-        <thead><tr><th>source</th><th style="text-align:right">objects</th></tr></thead>
-        <tbody id="sourceCounts"></tbody>
-      </table>
-    </div>
-  </section>
+  <div class="tab-content" data-tab="connections">
+    <section>
+      <h2>Active connections <span class="count" id="livecount">0</span></h2>
+      <div class="panel">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>source</th>
+              <th>query</th>
+              <th>state</th>
+              <th style="text-align:right">duration</th>
+              <th style="text-align:right">in</th>
+              <th style="text-align:right">out</th>
+              <th style="text-align:right">rate</th>
+              <th style="text-align:right">objects</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div class="empty" id="empty">no active connections</div>
+      </div>
+    </section>
+  </div>
 
-  <section>
-    <h2>Object classes</h2>
-    <div class="panel">
-      <table>
-        <thead><tr><th>class</th><th style="text-align:right">objects</th></tr></thead>
-        <tbody id="classCounts"></tbody>
-      </table>
-    </div>
-  </section>
+  <div class="tab-content" data-tab="database" hidden>
+    <section>
+      <h2>Process memory</h2>
+      <div class="mem-cards">
+        <div class="card">
+          <div class="label">VIRT — virtual</div>
+          <div class="value accent" id="memVirt">—</div>
+          <div class="sub">total mapped address space</div>
+        </div>
+        <div class="card">
+          <div class="label">RES — resident</div>
+          <div class="value accent2" id="memRSS">—</div>
+          <div class="sub">RSS, physical memory</div>
+        </div>
+        <div class="card">
+          <div class="label">SHR — shared</div>
+          <div class="value" id="memShr">—</div>
+          <div class="sub">file-backed / shared pages</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Databases</h2>
+      <div class="panel">
+        <table>
+          <thead><tr><th>source</th><th style="text-align:right">objects</th></tr></thead>
+          <tbody id="sourceCounts"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Object classes</h2>
+      <div class="panel">
+        <table>
+          <thead><tr><th>class</th><th style="text-align:right">objects</th></tr></thead>
+          <tbody id="classCounts"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
 
   <footer>
     polling <span id="endpoint" class="mono">./stats.json</span> · last update <span id="last" class="mono">—</span>
@@ -411,8 +482,16 @@
     renderLive(d.live || []);
     renderSources(d.source_counts || {});
     renderClasses(d.class_counts || {});
+    renderMemory(d.memory || {});
 
     $("last").textContent = new Date(d.generated_at).toLocaleTimeString();
+  }
+
+  function renderMemory(mem) {
+    const fmtMem = (n) => (n && n > 0) ? bytes(n) : "—";
+    $("memVirt").textContent = fmtMem(mem.virt_bytes);
+    $("memRSS").textContent  = fmtMem(mem.rss_bytes);
+    $("memShr").textContent  = fmtMem(mem.shr_bytes);
   }
 
   function renderLive(rows) {
@@ -439,28 +518,30 @@
     }).join("");
   }
 
-  function renderSources(counts) {
+  // renderCounts is shared by the Databases and Object classes tables. It
+  // emits one row per (key, count) pair followed by a totals row showing
+  // the sum across all keys.
+  function renderCounts(tbodyId, counts) {
     const keys = Object.keys(counts).sort();
+    const tb = $(tbodyId);
     if (keys.length === 0) {
-      $("sourceCounts").innerHTML = `<tr><td colspan="2" class="empty" style="padding:16px">no source data</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="2" class="empty" style="padding:16px">no data</td></tr>`;
       return;
     }
-    $("sourceCounts").innerHTML = keys.map(k =>
-      `<tr><td class="mono">${escapeHTML(k)}</td>
-           <td class="mono" style="text-align:right">${fmt.format(counts[k])}</td></tr>`
-    ).join("");
+    let total = 0;
+    const rows = keys.map(k => {
+      total += counts[k] | 0;
+      return `<tr><td class="mono">${escapeHTML(k)}</td>
+                  <td class="mono" style="text-align:right">${fmt.format(counts[k])}</td></tr>`;
+    });
+    rows.push(
+      `<tr class="totals"><td class="mono">total</td>
+        <td class="mono" style="text-align:right">${fmt.format(total)}</td></tr>`
+    );
+    tb.innerHTML = rows.join("");
   }
-  function renderClasses(counts) {
-    const keys = Object.keys(counts).sort();
-    if (keys.length === 0) {
-      $("classCounts").innerHTML = `<tr><td colspan="2" class="empty" style="padding:16px">no class data</td></tr>`;
-      return;
-    }
-    $("classCounts").innerHTML = keys.map(k =>
-      `<tr><td class="mono">${escapeHTML(k)}</td>
-           <td class="mono" style="text-align:right">${fmt.format(counts[k])}</td></tr>`
-    ).join("");
-  }
+  function renderSources(counts) { renderCounts("sourceCounts", counts); }
+  function renderClasses(counts) { renderCounts("classCounts", counts); }
 
   // drawSpark renders the server-provided per-second QPS array as a
   // bar-style sparkline. Each bar is one Unix second; the right edge is
@@ -502,6 +583,22 @@
     if (paused) { clearInterval(timer); timer = null; setStatus("stale", "paused"); }
     else start();
   });
+
+  // Tab switching. The active tab is persisted in localStorage so
+  // operators don't lose their place across page reloads.
+  function setTab(name) {
+    document.querySelectorAll(".tab").forEach(t =>
+      t.classList.toggle("active", t.dataset.tab === name));
+    document.querySelectorAll(".tab-content").forEach(c =>
+      c.hidden = c.dataset.tab !== name);
+    try { localStorage.setItem("whoisd.tab", name); } catch (_) {}
+  }
+  document.querySelectorAll(".tab").forEach(t =>
+    t.addEventListener("click", () => setTab(t.dataset.tab)));
+  try {
+    const saved = localStorage.getItem("whoisd.tab");
+    if (saved) setTab(saved);
+  } catch (_) {}
 
   start();
 })();
