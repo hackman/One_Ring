@@ -82,8 +82,18 @@ func (b *BERT) Insert(prefix netip.Prefix, action Action) error {
 // Match returns the action associated with the longest prefix that contains
 // addr, or the tree's default action when no prefix matches.
 func (b *BERT) Match(addr netip.Addr) Action {
+	a, _ := b.MatchExplicit(addr)
+	return a
+}
+
+// MatchExplicit is Match plus a flag indicating whether the result came
+// from an explicit rule in the tree (true) or from the configured default
+// policy (false). Callers use this to distinguish "specifically whitelisted"
+// from "passed because nothing matched" — for example, to bypass rate
+// limiting only for explicitly allow-listed sources.
+func (b *BERT) MatchExplicit(addr netip.Addr) (Action, bool) {
 	if !addr.IsValid() {
-		return b.defaultAction
+		return b.defaultAction, false
 	}
 	bits := canonicalAddrBits(addr)
 	n := b.root
@@ -103,9 +113,9 @@ func (b *BERT) Match(addr netip.Addr) Action {
 		}
 	}
 	if best == ActionNone {
-		return b.defaultAction
+		return b.defaultAction, false
 	}
-	return best
+	return best, true
 }
 
 // MatchString is a convenience wrapper for Match that parses addr first.

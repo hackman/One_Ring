@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/hackman/One_Ring/internal/logx"
 )
 
 //go:embed assets/dashboard.html
@@ -75,7 +77,7 @@ func (s *HTTPServer) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", s.Bind, err)
 	}
-	s.Log.Info("stats http listening", "bind", s.Bind)
+	logx.Notice(s.Log, "stats http listening", "bind", s.Bind)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(ln) }()

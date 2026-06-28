@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/hackman/One_Ring/internal/acl"
+	"github.com/hackman/One_Ring/internal/logx"
 	"github.com/hackman/One_Ring/internal/ratelimit"
 	"github.com/hackman/One_Ring/internal/ripe"
 	"github.com/hackman/One_Ring/internal/stats"
@@ -63,7 +64,7 @@ func (s *Server) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", s.cfg.Bind, err)
 	}
-	s.log.Info("whois listening", "bind", s.cfg.Bind)
+	logx.Notice(s.log, "whois listening", "bind", s.cfg.Bind)
 
 	// Close the listener on shutdown so Accept returns.
 	go func() {
@@ -126,14 +127,19 @@ func (s *Server) handle(ctx context.Context, c net.Conn) {
 		return
 	}
 
-	if action := s.acl.Match(src); action == acl.ActionDeny {
+	action, explicit := s.acl.MatchExplicit(src)
+	if action == acl.ActionDeny {
 		classification = "denied_acl"
 		s.log.Info("acl deny", "src", src)
 		s.replyAndCount(c, conn, "%% access denied by policy\n", stats.StateDenied)
 		return
 	}
 
-	if s.limiter != nil && !s.limiter.Allow(src) {
+	// Explicitly allow-listed sources (a CIDR appears in acl.allow that
+	// covers src) bypass the rate limiter entirely. Sources that pass
+	// only because of the default "allow" policy are still rate-limited.
+	bypassRate := explicit && action == acl.ActionAllow
+	if s.limiter != nil && !bypassRate && !s.limiter.Allow(src) {
 		classification = "denied_rate"
 		s.replyAndCount(c, conn, "%% rate limit exceeded\n", stats.StateDenied)
 		return

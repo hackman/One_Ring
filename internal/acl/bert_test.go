@@ -66,6 +66,34 @@ func TestBERT_DefaultAction(t *testing.T) {
 	}
 }
 
+func TestBERT_MatchExplicit(t *testing.T) {
+	b := New(ActionAllow) // default policy = allow
+	_ = b.Insert(mustPrefix(t, "10.0.0.0/8"), ActionAllow)
+	_ = b.Insert(mustPrefix(t, "192.0.2.0/24"), ActionDeny)
+
+	cases := []struct {
+		addr         string
+		wantAction   Action
+		wantExplicit bool
+		desc         string
+	}{
+		{"10.5.5.5", ActionAllow, true, "covered by explicit allow"},
+		{"192.0.2.10", ActionDeny, true, "covered by explicit deny"},
+		{"8.8.8.8", ActionAllow, false, "passes only via default policy"},
+	}
+	for _, c := range cases {
+		a, err := netip.ParseAddr(c.addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotAction, gotExplicit := b.MatchExplicit(a)
+		if gotAction != c.wantAction || gotExplicit != c.wantExplicit {
+			t.Errorf("%s: MatchExplicit(%s)=(%v,%v) want (%v,%v)",
+				c.desc, c.addr, gotAction, gotExplicit, c.wantAction, c.wantExplicit)
+		}
+	}
+}
+
 func TestBERT_BareIP(t *testing.T) {
 	b := New(ActionDeny)
 	if err := b.LoadCIDRs([]string{"203.0.113.5", "203.0.113.0/24"}, ActionAllow); err != nil {

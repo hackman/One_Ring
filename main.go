@@ -15,6 +15,7 @@ import (
 
 	"github.com/hackman/One_Ring/internal/acl"
 	"github.com/hackman/One_Ring/internal/config"
+	"github.com/hackman/One_Ring/internal/logx"
 	"github.com/hackman/One_Ring/internal/ratelimit"
 	"github.com/hackman/One_Ring/internal/ripe"
 	"github.com/hackman/One_Ring/internal/server"
@@ -22,17 +23,62 @@ import (
 )
 
 func main() {
-	cfgPath := flag.String("config", "config.yaml", "path to YAML config")
+	var (
+		cfgPath     string
+		helpFlag    bool
+		versionFlag bool
+		statsFlag   bool
+	)
+	const defaultCfgPath = "/etc/whoisd.yaml"
+	flag.StringVar(&cfgPath, "c", defaultCfgPath, "path to YAML config")
+	flag.StringVar(&cfgPath, "config", defaultCfgPath, "path to YAML config")
+	flag.BoolVar(&helpFlag, "h", false, "show this help and exit")
+	flag.BoolVar(&helpFlag, "help", false, "show this help and exit")
+	flag.BoolVar(&versionFlag, "v", false, "print version and exit")
+	flag.BoolVar(&versionFlag, "version", false, "print version and exit")
+	flag.BoolVar(&statsFlag, "s", false, "fetch live status from the running server and print it")
+	flag.BoolVar(&statsFlag, "stats", false, "fetch live status from the running server and print it")
+
+	flag.Usage = func() {
+		out := flag.CommandLine.Output()
+		fmt.Fprintf(out, "One Ring - whoisd %s. A multi-RIR WHOIS server that merges RIPE, ARIN, APNIC, LACNIC, AFRINIC DBs.\n", Version)
+		fmt.Fprintf(out, "Usage:\n  %s [flags]\n\n", os.Args[0])
+		fmt.Fprintf(out, "Flags:\n")
+		fmt.Fprintf(out, "  -c, --config <path>   path to YAML config (default %q)\n", defaultCfgPath)
+		fmt.Fprintf(out, "  -s, --stats           fetch live status from the running server and print it\n")
+		fmt.Fprintf(out, "  -v, --version         print version and exit\n")
+		fmt.Fprintf(out, "  -h, --help            show this help and exit\n\n")
+		fmt.Fprintf(out, "Project:  https://github.com/hackman/One_Ring\n")
+	}
+
 	flag.Parse()
 
-	cfg, err := config.Load(*cfgPath)
+	if helpFlag {
+		flag.Usage()
+		return
+	}
+	if versionFlag {
+		fmt.Printf("One Ring — whoisd %s\n", Version)
+		return
+	}
+
+	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		os.Exit(2)
 	}
 
+	if statsFlag {
+		if err := runStatsCLI(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "stats: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	logger := newLogger(cfg.Log.Level)
-	logger.Info("whoisd starting",
+	logx.Notice(logger, "whoisd starting",
+		"version", Version,
 		"cores", runtime.GOMAXPROCS(0),
 		"bind", cfg.Server.Bind,
 		"sources", len(cfg.Dbase.Sources),
@@ -119,6 +165,11 @@ func statsOrNil(enabled bool, r *stats.Registry) *stats.Registry {
 	return r
 }
 
+// Version is bumped manually and intentionally uses a two-number scheme
+// (MAJOR.MINOR). May be overridden at build time via
+// `-ldflags "-X main.Version=1.2"`.
+var Version = "1.0"
+
 func newLogger(level string) *slog.Logger {
 	// "none" disables logging entirely by sending records to io.Discard at
 	// the highest possible severity so no record is ever emitted.
@@ -137,7 +188,20 @@ func newLogger(level string) *slog.Logger {
 	default:
 		lvl = slog.LevelInfo
 	}
-	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl})
+	opts := &slog.HandlerOptions{
+		Level: lvl,
+		// Rename logx.LevelNotice to the human label "NOTICE" — slog's
+		// default formatter would otherwise print "ERROR+4".
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.LevelKey {
+				if lv, ok := a.Value.Any().(slog.Level); ok && lv == logx.LevelNotice {
+					a.Value = slog.StringValue("NOTICE")
+				}
+			}
+			return a
+		},
+	}
+	h := slog.NewTextHandler(os.Stderr, opts)
 	return slog.New(h)
 }
 
@@ -201,7 +265,7 @@ func refresh(ctx context.Context, cfg *config.Config, mgr *ripe.Manager, log *sl
 		return false, err
 	}
 	if rebuilt {
-		log.Info("dbase refresh complete",
+		logx.Notice(log, "dbase ready",
 			"elapsed", time.Since(t0),
 			"changed_files", changed,
 			"total_files", len(fetched),
