@@ -16,6 +16,7 @@
 BINARY  := whoisd
 VERSION ?= 3.0
 LDFLAGS := -ldflags "-X main.Version=$(VERSION)"
+RELEASE_DIR := one-ring-${VERSION}
 RELEASE_FILE := one-ring-${VERSION}.tgz
 
 .PHONY: all build rebuild clean test
@@ -28,13 +29,17 @@ build:
 rebuild: clean build
 
 release: build
-	tar cfz ${RELEASE_FILE} whoisd config.yaml whoisd.service install.sh whoisd.8
+	mkdir -p releases
+	mkdir ${RELEASE_DIR}
+	cp whoisd config.yaml whoisd.service install.sh whoisd.8 ${RELEASE_DIR}
+	tar cfz releases/${RELEASE_FILE} ${RELEASE_DIR}
+
 
 # Removes the compiled binary only. var/dbase (downloaded RIR cache) and
 # var/stats (dumped JSON) are intentionally left alone — they are runtime
 # data, not build output.
 clean:
-	rm -f $(BINARY) one-ring-*.tgz
+	rm -rf $(BINARY) one-ring-*
 
 test:
 	go test ./...
