@@ -46,8 +46,25 @@ go build -o whoisd .
 ./whoisd -config config.yaml
 ```
 
-First start downloads several GiB of `.gz` files into `var/dbase/` (one
+First start downloads several GiB of `.gz` files into `/var/whois/` (one
 subdirectory per source) and indexes them.
+
+## Install
+I have prepared a simple install.sh script to help you with the deployment 
+of whoisd.
+
+```bash
+tar xf one-ring-VER.tgz
+cd one-ring-VER
+./install.sh
+```
+This will:
+1. Deploy the configuration in /etc
+2. Copy the binary in /usr/sbin
+3. Create a whoisd user with home folder /var/whoisd
+4. Install the manpage
+5. Install the systemd service 
+
 
 ## Querying
 
