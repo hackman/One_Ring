@@ -1,0 +1,22 @@
+[Unit]
+Description=One Ring whois daemon
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+#User=whoisd
+PermissionsStartOnly=true
+AmbientCapabilities=CAP_NET_BIND_SERVICE 
+
+ExecStart=/usr/sbin/whoisd -c /etc/whoisd.yaml
+Restart=on-failure
+RestartSec=5s
+
+TimeoutStartSec=120s
+TimeoutStopSec=15s
+
+# Make /usr, /boot, /etc and possibly some more folders read-only...
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
