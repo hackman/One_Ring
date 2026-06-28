@@ -43,11 +43,14 @@ So I have a local cache when querying the whois DB.
 
 ```bash
 go build -o whoisd .
-./whoisd -config config.yaml
+./whoisd -c config.yaml
 ```
 
-First start downloads several GiB of `.gz` files into `/var/whois/` (one
+First start downloads several GB of `.gz` files into `/var/whois/` (one
 subdirectory per source) and indexes them.
+
+Parsing and loading the contents of the files takes time, so give it a min 
+or two, to start. 
 
 ## Install
 I have prepared a simple install.sh script to help you with the deployment 
@@ -116,7 +119,7 @@ internal/stats/        live registry, JSON dumper, embedded HTTP dashboard
 ## Notes
 
 - Memory footprint scales with the size of the merged store. With all five
-  RIRs loaded, expect ~20–30 GiB resident.
+  RIRs loaded, expect ~20 GB resident.
 - Because of the large DB sets that have to be loaded, the startup time is 
   quite long.
 - Binding to port 43 requires either root or
