@@ -98,7 +98,11 @@ dbase:
       url:     "https://ftp.lacnic.net/lacnic/dbase/lacnic.db.gz"
 
 acl:
+  # Default policy applied when no explicit allow/deny rule matches.
   default: "allow"
+  # CIDRs in `allow` are treated as trusted: they are both permitted AND
+  # exempt from the rate_limit section below. Sources that pass only via
+  # the default policy are still rate-limited.
   allow:
     - "127.0.0.0/8"
     - "::1/128"
@@ -120,7 +124,7 @@ stats:
   dump_path: "/var/whoisd/stats.json"
   # Sub-second values are allowed (e.g. "200ms", "500ms"). Minimum 50ms.
   dump_interval: "500ms"
-  http_bind: "127.0.0.1:8080"
+  http_bind: "127.0.0.1:8043"
 
 log:
   # Verbosity. Each level includes everything above it (less verbose).
