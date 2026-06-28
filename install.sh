@@ -14,3 +14,7 @@ fi
 if [[ ! -f /usr/sbin/whoisd ]]; then
 	cp whoisd /usr/sbin/whoisd
 fi
+if [[ ! -f /usr/share/man/man8/whoisd.8 ]]; then
+  install -m644 whoisd.8 /usr/share/man/man8/whoisd.8
+fi
+

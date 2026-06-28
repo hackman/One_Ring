@@ -1,0 +1,419 @@
+.\" Manpage for whoisd (One Ring multi-RIR WHOIS server).
+.\" Render with:    man ./whoisd.8
+.\" Lint with:      mandoc -Tlint whoisd.8
+.\" Install:        install -m644 whoisd.8 /usr/share/man/man8/
+.TH WHOISD 8 "2026-06-28" "One Ring 1.0" "System Administration Commands"
+
+.SH NAME
+whoisd \- One Ring multi-RIR WHOIS server
+
+.SH SYNOPSIS
+.B whoisd
+.RB [ \-c
+.IR file " | " \-\-config
+.IR file ]
+.RB [ \-s " | " \-\-stats ]
+.RB [ \-v " | " \-\-version ]
+.RB [ \-h " | " \-\-help ]
+
+.SH DESCRIPTION
+.B whoisd
+is a multi-core WHOIS server (RFC 3912) that downloads, merges, and serves
+the bulk RPSL dumps of all five Regional Internet Registries (RIPE, ARIN,
+APNIC, LACNIC, AFRINIC) from a single TCP endpoint. One query reaches every
+registry regardless of which one owns the address space.
+.PP
+The server keeps the merged database in memory, indexed by primary key,
+NIC handle, domain name, and a 128-bit binary radix trie of IP prefixes
+(longest-prefix-match returns the most specific allocation). Each upstream
+is polled on a configurable cadence with conditional
+.B If-Modified-Since
+requests, and the in-memory store is rebuilt only when at least one source
+actually changed. A UTC time-of-day anchor guarantees at least one fresh
+attempt around the RIRs' daily publish window.
+.PP
+A live stats subsystem tracks every in-flight connection (source, query,
+state, duration, bytes transferred) and dumps a JSON snapshot to disk on a
+configurable cadence (sub-second supported). An optional embedded HTTP
+listener serves both a single-file dashboard and the JSON for external
+consumers.
+
+.SH OPTIONS
+.TP
+.BR \-c " " \fIfile\fR,  " " \fB\-\-config\fR " " \fIfile\fR
+Path to the YAML configuration file. Default:
+.IR /etc/whoisd.yaml .
+.TP
+.BR \-s ", " \-\-stats
+Fetch the live status JSON from the running server's stats HTTP listener
+(as configured by
+.BR stats.http_bind )
+and print a pretty, multi-column summary to standard output. The endpoint
+URL is discovered from the same configuration file. Exits without starting
+the server.
+.TP
+.BR \-v ", " \-\-version
+Print the binary's version string and exit. The string uses a two-number
+.RI ( MAJOR.MINOR )
+scheme and can be stamped at build time via
+.IR "go build -ldflags \(dq-X main.Version=1.2\(dq" .
+.TP
+.BR \-h ", " \-\-help
+Show the built-in usage summary and exit.
+
+.SH CONFIGURATION FILE
+The configuration file is YAML. All fields have sensible defaults; an empty
+file is a valid configuration but you must enable at least one source under
+.BR dbase.sources .
+The top-level keys are
+.BR server ,
+.BR dbase ,
+.BR acl ,
+.BR rate_limit ,
+.BR stats ,
+and
+.BR log .
+
+.SS server
+.TP
+.B bind
+TCP listen address for the WHOIS protocol, in
+.B host:port
+form. Default:
+.BR 0.0.0.0:43 .
+Binding to port 43 requires either root or
+.IR "setcap cap_net_bind_service=+ep ./whoisd" .
+.TP
+.B read_timeout
+Maximum time to wait for the client's query line. Default:
+.BR 5s .
+.TP
+.B write_timeout
+Maximum time spent writing the response. Default:
+.BR 30s .
+.TP
+.B max_concurrent
+Upper bound on concurrent in-flight queries. Excess clients receive
+.IR "%% server busy, try again" .
+Default:
+.BR 1024 .
+.TP
+.B max_query_bytes
+Caps the query line length to defeat abusive clients. Default:
+.BR 512 .
+
+.SS dbase
+.TP
+.B cache_dir
+Local directory where downloaded
+.IR *.gz
+RIR dumps are cached. One subdirectory per source. Default:
+.IR ./var/dbase .
+.TP
+.B poll_interval
+How often to ask each upstream "has anything changed?". Polls are cheap
+because of conditional GETs. Default:
+.BR 1h .
+Minimum allowed:
+.BR 30s .
+.TP
+.B daily_at
+UTC time-of-day
+.RB ( HH:MM )
+at which to schedule one guaranteed refresh attempt per day. Picks up the
+RIRs' daily publishes promptly even if
+.B poll_interval
+is long. Set to the empty string
+.RB ( """" )
+to disable the anchor. Default:
+.BR 02:00 .
+.TP
+.B retry_on_failure
+Backoff applied between attempts after a refresh fails. Default:
+.BR 5m .
+.TP
+.B sources
+List of upstream databases to fetch and merge. Each entry is an object with
+the following fields:
+.RS
+.TP
+.B name
+Symbolic name used as the per-source cache subdirectory and in stats
+output (e.g.
+.BR ripe ,
+.BR arin ).
+.TP
+.B enabled
+Whether to fetch this source. Setting any source to
+.B false
+skips it.
+.TP
+.B format
+.BR split " | " single .
+.B split
+fetches one
+.B .gz
+per RPSL class from
+.BR ${url}/${db_name}.db.${class}.gz
+(RIPE, APNIC).
+.B single
+fetches one large
+.B .gz
+directly from
+.B url
+(ARIN, LACNIC, AFRINIC).
+.TP
+.B url
+Directory URL for
+.BR split ,
+or the full file URL for
+.BR single .
+.TP
+.B db_name
+File-name prefix used by the
+.B split
+format. Defaults to
+.B name
+if omitted.
+.TP
+.B classes
+List of RPSL classes to fetch (only meaningful for
+.BR split ).
+Typical full set: inetnum, inet6num, route, route6, aut-num, as-block,
+as-set, domain, mntner, organisation, person, role, irt, key-cert,
+filter-set, inet-rtr, peering-set, route-set, rtr-set.
+.RE
+
+.SS acl
+The ACL is a Binary Encoded Radix Tree (BERT) of CIDR prefixes covering
+both IPv4 and IPv6 in one structure. The longest matching prefix wins.
+.TP
+.B default
+Policy applied when no explicit allow/deny rule matches:
+.BR allow " | " deny .
+Default:
+.BR allow .
+.TP
+.B allow
+List of CIDRs (or bare IPs interpreted as
+.BR /32 / /128 )
+that are permitted. Crucially, sources matched by an entry in
+.B allow
+.B are also exempt from the rate limiter
+(see
+.BR rate_limit ).
+Sources permitted only via the default policy are still rate-limited.
+.TP
+.B deny
+List of CIDRs that are explicitly rejected with
+.IR "%% access denied by policy" .
+.PP
+The loopback prefixes
+.BR 127.0.0.0/8
+and
+.B ::1/128
+are always implicitly allowed (and rate-limit-exempt) so operators can
+always reach the server locally.
+
+.SS rate_limit
+Per-source token-bucket limiter. Source addresses are aggregated to a
+configurable prefix length to prevent scanners from hiding in address
+space.
+.TP
+.B enabled
+Master switch. Default:
+.BR false .
+.TP
+.B rps
+Sustained queries per second per aggregated source. Required when
+.B enabled
+is true.
+.TP
+.B burst
+Token-bucket size above
+.B rps
+before throttling kicks in. Required when
+.B enabled
+is true.
+.TP
+.B v4_prefix
+Prefix length to aggregate IPv4 sources by (0\(en32). Default:
+.BR 32
+(per-IP) — most operators want
+.BR 24
+to lump abusive subnets together.
+.TP
+.B v6_prefix
+Prefix length to aggregate IPv6 sources by (0\(en128). Default:
+.BR 128 .
+Typical:
+.BR 48 .
+.TP
+.B idle_ttl
+How long an idle per-source bucket lives in memory before garbage
+collection. Default:
+.BR 10m .
+
+.SS stats
+.TP
+.B enabled
+Master switch for the stats subsystem (counters, live connection registry,
+JSON dumps, optional HTTP listener). Default:
+.BR false .
+.TP
+.B dump_path
+Path of the JSON file rewritten atomically every
+.BR dump_interval .
+Empty disables the disk dump. The HTTP listener can still serve in-memory
+snapshots even with no disk dump configured.
+.TP
+.B dump_interval
+Cadence at which the snapshot is regenerated and (optionally) flushed to
+disk. Sub-second values are allowed
+.RB ( """200ms""" ,
+.BR """500ms""" ).
+Minimum:
+.BR 50ms .
+Default:
+.BR 1s .
+.TP
+.B http_bind
+TCP listen address for the embedded HTTP dashboard. Serves
+.B GET /
+(single-file HTML dashboard) and
+.B GET /stats.json
+(current snapshot). Empty disables the listener.
+
+.SS log
+.TP
+.B level
+Verbosity. One of
+.BR debug ,
+.BR info ,
+.BR warn ,
+.BR error ,
+or
+.B none
+(also accepts
+.B off
+or
+.BR silent ).
+Each level includes everything above it. Default:
+.BR info .
+.PP
+A small set of lifecycle events (server starting with version, each
+listener bind, each (re)load completion) is logged at a custom
+.B NOTICE
+level above
+.BR error ,
+so it is emitted regardless of the configured filter except
+.BR none .
+
+.SH SIGNALS
+.TP
+.B SIGINT, SIGTERM
+Initiate a graceful shutdown: stops accepting new connections, waits for
+in-flight queries to finish, flushes the final stats snapshot, and exits.
+
+.SH FILES
+.TP
+.I /etc/whoisd.yaml
+Default configuration file location (override with
+.BR \-c ).
+.TP
+.IR cache_dir /\fIsource\fR/\fIsource\fR.db.\fIclass\fR.gz
+Cached RIR dumps. Each enabled source has its own subdirectory; the file
+naming mirrors the upstream layout (or just
+.IR source.db.gz
+for single-file formats).
+.TP
+.I dump_path
+The current stats JSON snapshot, atomically rewritten every
+.BR dump_interval .
+
+.SH EXIT STATUS
+.TP
+.B 0
+Clean shutdown after SIGINT/SIGTERM.
+.TP
+.B 1
+Runtime failure: initial database load failed, the listener died, or the
+server otherwise stopped on an error.
+.TP
+.B 2
+Startup failure: configuration could not be loaded, parsed, validated, or
+the ACL could not be built.
+
+.SH EXAMPLES
+.PP
+Run the server with a custom config:
+.PP
+.RS
+.nf
+whoisd \-\-config /etc/whoisd.yaml
+.fi
+.RE
+.PP
+Query the running server (default WHOIS client, port from
+.BR server.bind ):
+.PP
+.RS
+.nf
+whois \-h 127.0.0.1 \-p 4343 8.8.8.8
+whois \-h 127.0.0.1 \-p 4343 AS3333
+whois \-h 127.0.0.1 \-p 4343 \-\- '\-m 193.0.0.0/16'
+.fi
+.RE
+.PP
+Inspect the live status without disturbing the server:
+.PP
+.RS
+.nf
+whoisd \-\-stats
+.fi
+.RE
+.PP
+Bind to the privileged port 43 without running as root:
+.PP
+.RS
+.nf
+setcap cap_net_bind_service=+ep /usr/local/bin/whoisd
+.fi
+.RE
+
+.SH NOTES
+.PP
+Memory footprint scales with the size of the merged store. With all five
+RIRs loaded, expect roughly 18\(en20 GiB resident. Startup time is dominated
+by the initial download and parse; subsequent starts reuse the on-disk
+cache and are bound by parse time alone.
+.PP
+.B whoisd
+is a single static binary with no runtime dependencies beyond the host
+operating system. It does not require a database server, message broker,
+or external state store.
+
+.SH SEE ALSO
+.BR whois (1),
+.BR yaml (5)
+.PP
+RIPE Database split-format documentation:
+.UR https://ftp.ripe.net/ripe/dbase/split/
+.UE
+.PP
+Project home:
+.UR https://github.com/hackman/One_Ring
+.UE
+
+.SH AUTHORS
+Written by hackman.
+Project hosted at
+.UR https://github.com/hackman/One_Ring
+.UE
+.
+
+.SH REPORTING BUGS
+Open an issue at
+.UR https://github.com/hackman/One_Ring/issues
+.UE
+.

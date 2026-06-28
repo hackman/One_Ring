@@ -28,7 +28,7 @@ build:
 rebuild: clean build
 
 release: build
-	tar cfz ${RELEASE_FILE} whoisd config.yaml whoisd.service install.sh
+	tar cfz ${RELEASE_FILE} whoisd config.yaml whoisd.service install.sh whoisd.8
 
 # Removes the compiled binary only. var/dbase (downloaded RIR cache) and
 # var/stats (dumped JSON) are intentionally left alone — they are runtime
