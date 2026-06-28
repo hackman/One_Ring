@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/netip"
 	"os"
@@ -28,6 +27,7 @@ func main() {
 		helpFlag    bool
 		versionFlag bool
 		statsFlag   bool
+		reloadFlag  bool
 	)
 	const defaultCfgPath = "/etc/whoisd.yaml"
 	flag.StringVar(&cfgPath, "c", defaultCfgPath, "path to YAML config")
@@ -38,17 +38,20 @@ func main() {
 	flag.BoolVar(&versionFlag, "version", false, "print version and exit")
 	flag.BoolVar(&statsFlag, "s", false, "fetch live status from the running server and print it")
 	flag.BoolVar(&statsFlag, "stats", false, "fetch live status from the running server and print it")
+	flag.BoolVar(&reloadFlag, "r", false, "send SIGHUP to the running whoisd to reload its configuration")
+	flag.BoolVar(&reloadFlag, "reload", false, "send SIGHUP to the running whoisd to reload its configuration")
 
 	flag.Usage = func() {
 		out := flag.CommandLine.Output()
-		fmt.Fprintf(out, "One Ring - whoisd %s. A multi-RIR WHOIS server that merges RIPE, ARIN, APNIC, LACNIC, AFRINIC DBs.\n", Version)
+		fmt.Fprintf(out, "One Ring - whoisd %s. A multi-RIR WHOIS server that merges RIPE, ARIN, APNIC, LACNIC and AFRINIC DBs.\n", Version);
+		fmt.Fprintf(out, "Project:  https://github.com/hackman/One_Ring\n")
 		fmt.Fprintf(out, "Usage:\n  %s [flags]\n\n", os.Args[0])
 		fmt.Fprintf(out, "Flags:\n")
 		fmt.Fprintf(out, "  -c, --config <path>   path to YAML config (default %q)\n", defaultCfgPath)
 		fmt.Fprintf(out, "  -s, --stats           fetch live status from the running server and print it\n")
-		fmt.Fprintf(out, "  -v, --version         print version and exit\n")
-		fmt.Fprintf(out, "  -h, --help            show this help and exit\n\n")
-		fmt.Fprintf(out, "Project:  https://github.com/hackman/One_Ring\n")
+		fmt.Fprintf(out, "  -r, --reload          send SIGHUP to the running whoisd to reload the configuration\n")
+		fmt.Fprintf(out, "  -v, --version         show the version \n")
+		fmt.Fprintf(out, "  -h, --help            show this help\n\n")
 	}
 
 	flag.Parse()
@@ -75,8 +78,25 @@ func main() {
 		}
 		return
 	}
+	if reloadFlag {
+		if err := sendReload(); err != nil {
+			fmt.Fprintf(os.Stderr, "reload: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
-	logger := newLogger(cfg.Log.Level)
+	levelVar := new(slog.LevelVar)
+	setLevelVar(levelVar, cfg.Log.Level)
+	logger := newLogger(levelVar)
+
+	// Write the pid file as soon as we have a logger to report errors. This
+	// is what `whoisd --reload` will look up to find the running instance.
+	if err := writePidFile(); err != nil {
+		logger.Warn("pid file", "err", err)
+	}
+	defer removePidFile()
+
 	logx.Notice(logger, "whoisd starting",
 		"version", Version,
 		"cores", runtime.GOMAXPROCS(0),
@@ -92,13 +112,7 @@ func main() {
 
 	var lim *ratelimit.Limiter
 	if cfg.RateLimit.Enabled {
-		lim = ratelimit.New(ratelimit.Config{
-			RPS:      cfg.RateLimit.RPS,
-			Burst:    cfg.RateLimit.Burst,
-			V4Prefix: cfg.RateLimit.V4Prefix,
-			V6Prefix: cfg.RateLimit.V6Prefix,
-			IdleTTL:  cfg.RateLimit.IdleTTL,
-		})
+		lim = buildLimiter(cfg.RateLimit)
 	}
 
 	manager := ripe.NewManager(logger)
@@ -113,8 +127,9 @@ func main() {
 	}
 	go refreshLoop(ctx, cfg, manager, logger)
 
+	var dumper *stats.Dumper
 	if cfg.Stats.Enabled {
-		dumper := &stats.Dumper{
+		dumper = &stats.Dumper{
 			Path:     cfg.Stats.DumpPath,
 			Interval: cfg.Stats.DumpInterval,
 			Log:      logger,
@@ -151,11 +166,26 @@ func main() {
 		MaxQueryBytes: cfg.Server.MaxQueryBytes,
 	}, manager, tree, lim, statsOrNil(cfg.Stats.Enabled, registry), logger)
 
+	// SIGHUP handler runs in parallel to Run; on signal, re-reads cfgPath
+	// and applies the reloadable subset (acl, rate_limit, log.level,
+	// stats.dump_interval, server.bind).
+	go reloadLoop(ctx, cfgPath, logger, levelVar, srv, dumper)
+
 	if err := srv.Run(ctx); err != nil {
 		logger.Error("server stopped", "err", err)
 		os.Exit(1)
 	}
 	logger.Info("whoisd stopped")
+}
+
+func buildLimiter(c config.RateLimitConfig) *ratelimit.Limiter {
+	return ratelimit.New(ratelimit.Config{
+		RPS:      c.RPS,
+		Burst:    c.Burst,
+		V4Prefix: c.V4Prefix,
+		V6Prefix: c.V6Prefix,
+		IdleTTL:  c.IdleTTL,
+	})
 }
 
 func statsOrNil(enabled bool, r *stats.Registry) *stats.Registry {
@@ -170,26 +200,12 @@ func statsOrNil(enabled bool, r *stats.Registry) *stats.Registry {
 // `-ldflags "-X main.Version=1.2"`.
 var Version = "1.0"
 
-func newLogger(level string) *slog.Logger {
-	// "none" disables logging entirely by sending records to io.Discard at
-	// the highest possible severity so no record is ever emitted.
-	if level == "none" || level == "off" || level == "silent" {
-		h := slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.Level(127)})
-		return slog.New(h)
-	}
-	var lvl slog.Level
-	switch level {
-	case "debug":
-		lvl = slog.LevelDebug
-	case "warn":
-		lvl = slog.LevelWarn
-	case "error":
-		lvl = slog.LevelError
-	default:
-		lvl = slog.LevelInfo
-	}
+// newLogger returns a stderr text handler whose minimum level is driven by
+// the supplied LevelVar. The LevelVar is mutable at runtime so SIGHUP can
+// change verbosity without rebuilding the logger.
+func newLogger(level *slog.LevelVar) *slog.Logger {
 	opts := &slog.HandlerOptions{
-		Level: lvl,
+		Level: level,
 		// Rename logx.LevelNotice to the human label "NOTICE" — slog's
 		// default formatter would otherwise print "ERROR+4".
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
@@ -203,6 +219,24 @@ func newLogger(level string) *slog.Logger {
 	}
 	h := slog.NewTextHandler(os.Stderr, opts)
 	return slog.New(h)
+}
+
+// setLevelVar parses one of the configured level strings and installs it
+// into v. The "none" variants are encoded as a level above logx.LevelNotice
+// so absolutely nothing — including lifecycle notices — is emitted.
+func setLevelVar(v *slog.LevelVar, level string) {
+	switch level {
+	case "none", "off", "silent":
+		v.Set(slog.Level(127))
+	case "debug":
+		v.Set(slog.LevelDebug)
+	case "warn":
+		v.Set(slog.LevelWarn)
+	case "error":
+		v.Set(slog.LevelError)
+	default:
+		v.Set(slog.LevelInfo)
+	}
 }
 
 func buildACL(c config.ACLConfig) (*acl.BERT, error) {

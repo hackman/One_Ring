@@ -94,3 +94,88 @@ func TestServerEndToEnd(t *testing.T) {
 		t.Fatalf("response missing related person object: %q", resp)
 	}
 }
+
+func TestServer_Rebind(t *testing.T) {
+	mgr := newTestManager(t)
+	tree := acl.New(acl.ActionAllow)
+
+	// Pick two free ports up front.
+	pick := func() string {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr := ln.Addr().String()
+		_ = ln.Close()
+		return addr
+	}
+	addr1 := pick()
+	addr2 := pick()
+
+	cfg := Config{
+		Bind:          addr1,
+		ReadTimeout:   2 * time.Second,
+		WriteTimeout:  2 * time.Second,
+		MaxConcurrent: 4,
+		MaxQueryBytes: 256,
+	}
+	s := New(cfg, mgr, tree, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = s.Run(ctx)
+	}()
+
+	// Wait for the first listener to come up.
+	for i := 0; i < 50; i++ {
+		c, err := net.Dial("tcp", addr1)
+		if err == nil {
+			c.Close()
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if got := s.BindAddr(); got != addr1 {
+		t.Fatalf("BindAddr=%q want %q", got, addr1)
+	}
+
+	// Rebind.
+	if err := s.Rebind(addr2); err != nil {
+		t.Fatalf("Rebind: %v", err)
+	}
+	if got := s.BindAddr(); got != addr2 {
+		t.Fatalf("after rebind BindAddr=%q want %q", got, addr2)
+	}
+
+	// Query through the new listener — must work end-to-end.
+	var c net.Conn
+	var err error
+	for i := 0; i < 50; i++ {
+		c, err = net.Dial("tcp", addr2)
+		if err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("dial after rebind: %v", err)
+	}
+	defer c.Close()
+	if _, err := c.Write([]byte("192.0.2.42\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := io.ReadAll(bufio.NewReader(c))
+	if !strings.Contains(string(out), "TESTNET") {
+		t.Fatalf("response missing TESTNET after rebind: %q", out)
+	}
+
+	// Old address should no longer accept (connection refused or reset).
+	if c, err := net.DialTimeout("tcp", addr1, 200*time.Millisecond); err == nil {
+		c.Close()
+		t.Errorf("old listener at %s still accepts connections", addr1)
+	}
+}

@@ -17,6 +17,7 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hackman/One_Ring/internal/acl"
@@ -35,48 +36,137 @@ type Config struct {
 }
 
 type Server struct {
-	cfg     Config
-	store   *ripe.Manager
-	acl     *acl.BERT
-	limiter *ratelimit.Limiter // may be nil
-	stats   *stats.Registry    // may be nil
-	log     *slog.Logger
+	cfg   Config
+	store *ripe.Manager
+	stats *stats.Registry // may be nil
+	log   *slog.Logger
+
+	// Mutable, hot-swappable at runtime via SetACL / SetLimiter. Stored as
+	// atomic pointers so handle() can read without locking.
+	aclTree atomic.Pointer[acl.BERT]
+	limiter atomic.Pointer[ratelimit.Limiter] // nil pointer means disabled
 
 	sem chan struct{} // bounded concurrency
+
+	// Listener state. Guarded by listenMu so Rebind can rotate the listener
+	// underneath the accept loop. The shutdown context fires `closed = true`
+	// which causes Run to exit even if a rebind is mid-flight.
+	listenMu sync.Mutex
+	ln       net.Listener
+	bindAddr string
+	closed   bool
 }
 
 func New(cfg Config, store *ripe.Manager, a *acl.BERT, lim *ratelimit.Limiter, reg *stats.Registry, log *slog.Logger) *Server {
-	return &Server{
-		cfg:     cfg,
-		store:   store,
-		acl:     a,
-		limiter: lim,
-		stats:   reg,
-		log:     log,
-		sem:     make(chan struct{}, cfg.MaxConcurrent),
+	s := &Server{
+		cfg:      cfg,
+		store:    store,
+		stats:    reg,
+		log:      log,
+		sem:      make(chan struct{}, cfg.MaxConcurrent),
+		bindAddr: cfg.Bind,
 	}
+	s.aclTree.Store(a)
+	s.limiter.Store(lim)
+	return s
 }
 
-// Run blocks until ctx is cancelled or Accept fails.
+// SetACL atomically replaces the active ACL. Safe to call from any goroutine.
+func (s *Server) SetACL(a *acl.BERT) { s.aclTree.Store(a) }
+
+// SetLimiter atomically replaces the active rate limiter. Pass nil to disable
+// rate limiting.
+func (s *Server) SetLimiter(lim *ratelimit.Limiter) { s.limiter.Store(lim) }
+
+// BindAddr returns the address the accept loop is currently listening on.
+func (s *Server) BindAddr() string {
+	s.listenMu.Lock()
+	defer s.listenMu.Unlock()
+	return s.bindAddr
+}
+
+// Rebind moves the WHOIS listener to addr. If addr is unchanged this is a
+// no-op. On any error (e.g. addr in use) the old listener stays active and
+// the error is returned.
+func (s *Server) Rebind(addr string) error {
+	s.listenMu.Lock()
+	defer s.listenMu.Unlock()
+	if s.closed {
+		return errors.New("server is shutting down")
+	}
+	if addr == s.bindAddr && s.ln != nil {
+		return nil
+	}
+	lc := &net.ListenConfig{KeepAlive: 30 * time.Second}
+	newLn, err := lc.Listen(context.Background(), "tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listen %s: %w", addr, err)
+	}
+	oldLn := s.ln
+	s.ln = newLn
+	s.bindAddr = addr
+	// Closing the old listener unblocks Accept; the accept loop then reads
+	// s.ln again and picks up the new one. New connections only ever land on
+	// the new listener.
+	if oldLn != nil {
+		_ = oldLn.Close()
+	}
+	logx.Notice(s.log, "whois listening", "bind", addr)
+	return nil
+}
+
+// Run blocks until ctx is cancelled. The active listener may be rotated at
+// any time via Rebind.
 func (s *Server) Run(ctx context.Context) error {
 	lc := &net.ListenConfig{KeepAlive: 30 * time.Second}
-	ln, err := lc.Listen(ctx, "tcp", s.cfg.Bind)
+	initial, err := lc.Listen(ctx, "tcp", s.cfg.Bind)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", s.cfg.Bind, err)
 	}
+	s.listenMu.Lock()
+	s.ln = initial
+	s.bindAddr = s.cfg.Bind
+	s.listenMu.Unlock()
 	logx.Notice(s.log, "whois listening", "bind", s.cfg.Bind)
 
-	// Close the listener on shutdown so Accept returns.
+	// Shutdown watcher: on ctx cancel, mark closed and close the current
+	// listener so Accept unblocks.
 	go func() {
 		<-ctx.Done()
-		_ = ln.Close()
+		s.listenMu.Lock()
+		s.closed = true
+		ln := s.ln
+		s.ln = nil
+		s.listenMu.Unlock()
+		if ln != nil {
+			_ = ln.Close()
+		}
 	}()
 
 	var wg sync.WaitGroup
 	for {
+		s.listenMu.Lock()
+		ln := s.ln
+		closed := s.closed
+		s.listenMu.Unlock()
+		if closed || ln == nil {
+			wg.Wait()
+			return nil
+		}
 		c, err := ln.Accept()
 		if err != nil {
-			if errors.Is(err, net.ErrClosed) || ctx.Err() != nil {
+			s.listenMu.Lock()
+			isClosed := s.closed
+			rotated := s.ln != ln // a Rebind happened during the Accept
+			s.listenMu.Unlock()
+			if isClosed || ctx.Err() != nil {
+				wg.Wait()
+				return nil
+			}
+			if rotated {
+				continue // pick up the new listener on the next iteration
+			}
+			if errors.Is(err, net.ErrClosed) {
 				wg.Wait()
 				return nil
 			}
@@ -127,7 +217,8 @@ func (s *Server) handle(ctx context.Context, c net.Conn) {
 		return
 	}
 
-	action, explicit := s.acl.MatchExplicit(src)
+	aclTree := s.aclTree.Load()
+	action, explicit := aclTree.MatchExplicit(src)
 	if action == acl.ActionDeny {
 		classification = "denied_acl"
 		s.log.Info("acl deny", "src", src)
@@ -139,7 +230,7 @@ func (s *Server) handle(ctx context.Context, c net.Conn) {
 	// covers src) bypass the rate limiter entirely. Sources that pass
 	// only because of the default "allow" policy are still rate-limited.
 	bypassRate := explicit && action == acl.ActionAllow
-	if s.limiter != nil && !bypassRate && !s.limiter.Allow(src) {
+	if lim := s.limiter.Load(); lim != nil && !bypassRate && !lim.Allow(src) {
 		classification = "denied_rate"
 		s.replyAndCount(c, conn, "%% rate limit exceeded\n", stats.StateDenied)
 		return

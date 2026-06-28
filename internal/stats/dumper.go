@@ -18,14 +18,19 @@ type SnapshotFn func() *Snapshot
 // Dumper writes a Snapshot to a JSON file on disk at a configurable cadence.
 // Writes are atomic (write-to-temp + rename) so a concurrent reader never
 // observes a partial file. The cadence may be sub-second.
+//
+// The cadence can be changed at runtime via SetInterval — Run reads the
+// new value and resets its internal ticker promptly.
 type Dumper struct {
 	Path     string
-	Interval time.Duration
+	Interval time.Duration // initial cadence; read once at start of Run
 	Snap     SnapshotFn
 	Log      *slog.Logger
 
-	mu   sync.RWMutex
-	last []byte // last serialized payload, kept for the HTTP handler
+	mu       sync.RWMutex
+	last     []byte        // last serialized payload, kept for the HTTP handler
+	curIntvl time.Duration // currently-active cadence; protected by mu
+	nudge    chan struct{} // SetInterval wakes Run; lazily created on first use
 }
 
 // Last returns the most recently dumped JSON payload, or nil if none yet.
@@ -40,21 +45,61 @@ func (d *Dumper) Last() []byte {
 	return out
 }
 
+// SetInterval changes the dump cadence at runtime. Sub-second values are
+// allowed. The new value takes effect immediately on the next tick of the
+// Run loop. Safe to call from any goroutine.
+func (d *Dumper) SetInterval(newI time.Duration) {
+	if newI <= 0 {
+		return
+	}
+	d.mu.Lock()
+	d.curIntvl = newI
+	if d.nudge == nil {
+		d.nudge = make(chan struct{}, 1)
+	}
+	ch := d.nudge
+	d.mu.Unlock()
+	select {
+	case ch <- struct{}{}:
+	default:
+		// already pending; Run will pick up the latest curIntvl
+	}
+}
+
 // Run blocks until ctx is cancelled. It dumps once immediately so consumers
-// have data right away, then on every interval tick.
+// have data right away, then on every interval tick. The cadence is checked
+// on every iteration so SetInterval changes are picked up promptly.
 func (d *Dumper) Run(ctx context.Context) error {
 	if d.Interval <= 0 {
 		return fmt.Errorf("dump interval must be > 0")
 	}
+	d.mu.Lock()
+	d.curIntvl = d.Interval
+	if d.nudge == nil {
+		d.nudge = make(chan struct{}, 1)
+	}
+	nudge := d.nudge
+	cur := d.curIntvl
+	d.mu.Unlock()
+
 	if err := d.dumpOnce(); err != nil {
 		d.Log.Warn("stats dump failed", "err", err)
 	}
-	t := time.NewTicker(d.Interval)
+	t := time.NewTicker(cur)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-nudge:
+			d.mu.RLock()
+			newI := d.curIntvl
+			d.mu.RUnlock()
+			if newI != cur && newI > 0 {
+				cur = newI
+				t.Reset(cur)
+				d.Log.Info("stats dump interval changed", "interval", cur)
+			}
 		case <-t.C:
 			if err := d.dumpOnce(); err != nil {
 				d.Log.Warn("stats dump failed", "err", err)
