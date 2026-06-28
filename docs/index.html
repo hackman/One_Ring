@@ -359,11 +359,18 @@ git clone https://github.com/hackman/One_Ring.git
 go build -o whoisd .</code></pre>
 
         <h3 style="margin-top:24px">Run</h3>
-        <pre><code>./whoisd <span class="tok-flag">-config</span> config.yaml</code></pre>
+        <pre><code>./whoisd <span class="tok-flag">-c</span> config.yaml</code></pre>
         <p style="font-size:13px;color:var(--fg-dim)">
-          First start downloads the five RIR dumps into <code>var/dbase/</code>
+          First start downloads the five RIR dumps into <code>/var/whoisd/</code>
           and indexes them. Subsequent starts reuse the cache.
         </p>
+
+        <h3 style="margin-top:24px">Install</h3>
+        <pre><code><span class="tok-cmt"># As root:</span>
+tar xf one-ring-VER.tgz
+<span class="tok-fn">cd</span> one-ring-VER
+<span class="tok-fn">./install.sh</span></pre>
+		
       </div>
 
       <div>
@@ -375,7 +382,7 @@ whois <span class="tok-flag">-h</span> 127.0.0.1 <span class="tok-flag">-p</span
 
         <h3 style="margin-top:24px">Open the dashboard</h3>
         <pre><code><span class="tok-cmt"># default http_bind</span>
-open http://127.0.0.1:8080/</code></pre>
+open http://127.0.0.1:8043/</code></pre>
       </div>
     </div>
   </section>
@@ -430,7 +437,7 @@ open http://127.0.0.1:8080/</code></pre>
   <section id="config">
     <h2>Configurable everything</h2>
     <pre><code><span class="tok-kw">dbase</span>:
-  <span class="tok-kw">cache_dir</span>:     <span class="tok-str">"./var/dbase"</span>
+  <span class="tok-kw">cache_dir</span>:     <span class="tok-str">"/var/dbase"</span>
   <span class="tok-kw">poll_interval</span>: <span class="tok-str">"1h"</span>     <span class="tok-cmt"># conditional GETs, cheap</span>
   <span class="tok-kw">daily_at</span>:      <span class="tok-str">"03:00"</span>   <span class="tok-cmt"># UTC anchor after RIR publish</span>
   <span class="tok-kw">sources</span>:
