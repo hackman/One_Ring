@@ -31,7 +31,7 @@ rebuild: clean build
 release: build
 	mkdir -p releases
 	mkdir ${RELEASE_DIR}
-	cp whoisd config.yaml whoisd.service install.sh whoisd.8 ${RELEASE_DIR}
+	cp whoisd config.yaml whoisd.service install.sh docs/whoisd.8 ${RELEASE_DIR}
 	tar cfz releases/${RELEASE_FILE} ${RELEASE_DIR}
 
 

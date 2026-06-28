@@ -3,6 +3,8 @@
 .\" Lint with:      mandoc -Tlint whoisd.8
 .\" Install:        install -m644 whoisd.8 /usr/share/man/man8/
 .TH WHOISD 8 "2026-06-28" "One Ring 1.0" "System Administration Commands"
+.\" Update date and version together; the HTML translation at
+.\" docs/whoisd.8.html should be kept in sync with this file by hand.
 
 .SH NAME
 whoisd \- One Ring multi-RIR WHOIS server
@@ -13,6 +15,7 @@ whoisd \- One Ring multi-RIR WHOIS server
 .IR file " | " \-\-config
 .IR file ]
 .RB [ \-s " | " \-\-stats ]
+.RB [ \-r " | " \-\-reload ]
 .RB [ \-v " | " \-\-version ]
 .RB [ \-h " | " \-\-help ]
 
@@ -51,6 +54,18 @@ Fetch the live status JSON from the running server's stats HTTP listener
 and print a pretty, multi-column summary to standard output. The endpoint
 URL is discovered from the same configuration file. Exits without starting
 the server.
+.TP
+.BR \-r ", " \-\-reload
+Signal the running
+.B whoisd
+to reload its configuration. Looks up the pid file (see
+.BR FILES )
+and sends
+.BR SIGHUP .
+Exits 0 on a successful signal delivery, 1 if no pid file is found or the
+signal cannot be delivered. Does not wait for the reload to complete on
+the daemon side — observe the result via the daemon's log output or
+.IR "whoisd --stats" .
 .TP
 .BR \-v ", " \-\-version
 Print the binary's version string and exit. The string uses a two-number
@@ -311,6 +326,25 @@ so it is emitted regardless of the configured filter except
 
 .SH SIGNALS
 .TP
+.B SIGHUP
+Re-read the configuration file and apply the
+.B reloadable subset:
+.BR acl.* ,
+.BR rate_limit.* ,
+.BR log.level ,
+.BR stats.dump_interval ,
+and
+.BR server.bind .
+Each sub-step is independent — a failure in one is logged and skipped, the
+others still apply. Changes to fields outside this subset (notably
+.BR dbase.* ,
+the
+.B server
+deadlines, and
+.BR server.max_concurrent )
+require a full restart. The same effect is available from the CLI via
+.BR "whoisd \-\-reload" .
+.TP
 .B SIGINT, SIGTERM
 Initiate a graceful shutdown: stops accepting new connections, waits for
 in-flight queries to finish, flushes the final stats snapshot, and exits.
@@ -330,6 +364,13 @@ for single-file formats).
 .I dump_path
 The current stats JSON snapshot, atomically rewritten every
 .BR dump_interval .
+.TP
+.IR /run/whoisd.pid ", " /var/run/whoisd.pid ", " /var/whoisd/whoisd.pid ", " /tmp/whoisd.pid
+Pid file locations, tried in order. On startup
+.B whoisd
+writes its pid to the first parent directory that exists and is writable.
+.B whoisd \-\-reload
+reads back the first existing file to find the running instance.
 
 .SH EXIT STATUS
 .TP

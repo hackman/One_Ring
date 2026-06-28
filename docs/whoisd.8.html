@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>whoisd(8) — One Ring · reference manual</title>
+<meta name="description" content="Reference documentation for whoisd(8), the One Ring multi-RIR WHOIS server.">
+<style>
+  :root {
+    --bg-0:        #0b1020;
+    --bg-1:        #121a35;
+    --panel:       rgba(255, 255, 255, 0.04);
+    --panel-2:     rgba(255, 255, 255, 0.06);
+    --panel-border:rgba(255, 255, 255, 0.08);
+    --fg:          #e6ecff;
+    --fg-dim:      #8b95b8;
+    --accent:      #6ea8ff;
+    --accent-2:    #b388ff;
+    --ok:          #4ade80;
+    --warn:        #fbbf24;
+    --bad:         #f87171;
+    --shadow:      0 10px 40px rgba(0, 0, 0, 0.45);
+    --mono:        ui-monospace, SFMono-Regular, Menlo, Consolas, "JetBrains Mono", monospace;
+    --max-w:       1180px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+    color: var(--fg);
+    background:
+      radial-gradient(1200px 800px at 10% -10%, rgba(110, 168, 255, 0.18), transparent 60%),
+      radial-gradient(900px 700px at 110% 10%, rgba(179, 136, 255, 0.16), transparent 60%),
+      linear-gradient(180deg, var(--bg-0), var(--bg-1));
+    background-attachment: fixed;
+    scroll-behavior: smooth;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; text-decoration-color: var(--accent-2); }
+  ::selection { background: rgba(110,168,255,.35); }
+
+  main { position: relative; z-index: 1; }
+
+  /* ----- top nav (matches index.html) ----- */
+  nav.top {
+    position: sticky; top: 0; z-index: 5;
+    background: rgba(11, 16, 32, 0.7);
+    backdrop-filter: saturate(140%) blur(10px);
+    -webkit-backdrop-filter: saturate(140%) blur(10px);
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .nav-inner {
+    max-width: var(--max-w); margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 24px;
+  }
+  .brand {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-weight: 700; letter-spacing: .3px; color: var(--fg);
+  }
+  .ring {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid var(--accent);
+    box-shadow:
+      0 0 12px rgba(110,168,255,.5),
+      inset 0 0 8px rgba(179,136,255,.4);
+    background: radial-gradient(circle at 30% 30%, rgba(179,136,255,.6), transparent 60%);
+  }
+  .nav-links { display: flex; gap: 22px; font-size: 14px; color: var(--fg-dim); }
+  .nav-links a { color: var(--fg-dim); }
+  .nav-links a:hover { color: var(--fg); }
+
+  /* ----- compact hero ----- */
+  .hero {
+    max-width: var(--max-w); margin: 0 auto;
+    padding: 56px 24px 28px;
+    text-align: left;
+  }
+  .eyebrow {
+    display: inline-block;
+    color: var(--accent); font-size: 11px; letter-spacing: 3px;
+    text-transform: uppercase; margin-bottom: 14px;
+    padding: 4px 10px;
+    border: 1px solid rgba(110,168,255,.35);
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(110,168,255,0.12), rgba(179,136,255,0.12));
+  }
+  .hero h1 {
+    font-size: clamp(28px, 4vw, 48px);
+    line-height: 1.1; margin: 0 0 10px;
+    letter-spacing: -.02em;
+    background: linear-gradient(135deg, #fff 0%, var(--accent) 60%, var(--accent-2) 100%);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+  }
+  .hero .meta {
+    color: var(--fg-dim); font-size: 14px;
+    font-family: var(--mono);
+  }
+
+  /* ----- docs layout: TOC + article ----- */
+  .docs {
+    max-width: var(--max-w); margin: 0 auto;
+    padding: 12px 24px 80px;
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 36px;
+  }
+  aside.toc {
+    position: sticky; top: 80px; align-self: start;
+    max-height: calc(100vh - 100px); overflow-y: auto;
+    font-size: 13px;
+    padding-right: 8px;
+  }
+  aside.toc ul {
+    list-style: none; padding: 0; margin: 0;
+  }
+  aside.toc li { margin: 4px 0; }
+  aside.toc a {
+    display: block;
+    color: var(--fg-dim);
+    padding: 4px 8px; border-radius: 6px;
+    text-decoration: none;
+  }
+  aside.toc a:hover { color: var(--fg); background: var(--panel); text-decoration: none; }
+  aside.toc ul ul { margin-left: 14px; }
+  aside.toc ul ul a { font-size: 12.5px; }
+  aside.toc .toc-heading {
+    color: var(--fg-dim); text-transform: uppercase;
+    letter-spacing: 1.2px; font-size: 11px;
+    margin: 0 0 10px;
+  }
+
+  article { min-width: 0; }
+  article section {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 22px 26px;
+    margin-bottom: 22px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  article section h2 {
+    font-size: 14px; letter-spacing: 1.4px; text-transform: uppercase;
+    margin: 0 0 14px;
+    color: var(--accent);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  article section h2 a.anchor,
+  article section h3 a.anchor {
+    color: var(--fg-dim); text-decoration: none; margin-left: 8px;
+    opacity: 0; transition: opacity .15s ease;
+    font-weight: 400;
+  }
+  article section h2:hover a.anchor,
+  article section h3:hover a.anchor { opacity: 1; }
+  article section h3 {
+    font-size: 17px; margin: 22px 0 10px;
+    color: var(--accent-2);
+  }
+  article p { margin: 0 0 12px; }
+  article p:last-child { margin-bottom: 0; }
+  article :target {
+    animation: highlight 1.2s ease;
+  }
+  @keyframes highlight {
+    0%   { background: rgba(110,168,255,0.18); }
+    100% { background: transparent; }
+  }
+
+  code, kbd {
+    font-family: var(--mono); font-size: 0.9em;
+    background: rgba(11, 16, 32, 0.6);
+    border: 1px solid var(--panel-border);
+    padding: 1px 6px; border-radius: 5px;
+    color: var(--accent);
+  }
+  pre {
+    background: rgba(11, 16, 32, 0.7);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px; padding: 14px 16px;
+    overflow-x: auto;
+    font-family: var(--mono); font-size: 13px; line-height: 1.55;
+    margin: 0 0 14px;
+  }
+  pre code {
+    background: none; border: none; padding: 0;
+    color: var(--fg);
+  }
+
+  /* ----- definition lists for options + config ----- */
+  dl.opts { margin: 0; }
+  dl.opts dt {
+    font-family: var(--mono);
+    color: var(--accent);
+    margin-top: 14px;
+    padding-bottom: 4px;
+  }
+  dl.opts dt:first-child { margin-top: 0; }
+  dl.opts dd {
+    margin: 0 0 4px 0;
+    padding-left: 18px;
+    color: var(--fg);
+  }
+  dl.opts dd p { margin: 0 0 8px; }
+  dl.opts dd:last-child { margin-bottom: 0; }
+  dl.opts dt em { font-style: normal; color: var(--accent-2); }
+  dl.opts dd .default {
+    color: var(--fg-dim); font-size: 13px; font-style: italic;
+  }
+
+  ul.plain { list-style: disc; padding-left: 22px; }
+  ul.plain li { margin: 4px 0; color: var(--fg); }
+
+  /* ----- footer ----- */
+  footer {
+    max-width: var(--max-w); margin: 0 auto;
+    padding: 28px 24px 60px;
+    color: var(--fg-dim); font-size: 13px;
+    border-top: 1px solid var(--panel-border);
+    text-align: center;
+  }
+  footer a { color: var(--fg-dim); }
+  footer a:hover { color: var(--fg); }
+
+  /* ----- mobile ----- */
+  @media (max-width: 820px) {
+    .docs { grid-template-columns: 1fr; gap: 18px; }
+    aside.toc {
+      position: static; max-height: none; overflow: visible;
+      padding: 12px 14px;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+    }
+    aside.toc ul ul { display: none; } /* keep mobile TOC short */
+    article section { padding: 18px 18px; }
+  }
+</style>
+</head>
+<body>
+<nav class="top">
+  <div class="nav-inner">
+    <a class="brand" href="./index.html">
+      <span class="ring" aria-hidden="true"></span>
+      <span>One Ring · <span style="color:var(--fg-dim);font-weight:500">whois</span></span>
+    </a>
+    <div class="nav-links">
+      <a href="./index.html">home</a>
+      <a href="https://github.com/hackman/One_Ring">github</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+
+  <header class="hero">
+    <div class="eyebrow">Reference manual</div>
+    <h1>whoisd(8)</h1>
+    <div class="meta">Section 8 · System Administration Commands · One Ring 1.0</div>
+  </header>
+
+  <div class="docs">
+    <aside class="toc" aria-label="Table of contents">
+      <div class="toc-heading">On this page</div>
+      <ul>
+        <li><a href="#name">Name</a></li>
+        <li><a href="#synopsis">Synopsis</a></li>
+        <li><a href="#description">Description</a></li>
+        <li><a href="#options">Options</a></li>
+        <li>
+          <a href="#configuration">Configuration file</a>
+          <ul>
+            <li><a href="#cfg-server"><code>server</code></a></li>
+            <li><a href="#cfg-dbase"><code>dbase</code></a></li>
+            <li><a href="#cfg-acl"><code>acl</code></a></li>
+            <li><a href="#cfg-rate-limit"><code>rate_limit</code></a></li>
+            <li><a href="#cfg-stats"><code>stats</code></a></li>
+            <li><a href="#cfg-log"><code>log</code></a></li>
+          </ul>
+        </li>
+        <li><a href="#signals">Signals</a></li>
+        <li><a href="#files">Files</a></li>
+        <li><a href="#exit-status">Exit status</a></li>
+        <li><a href="#examples">Examples</a></li>
+        <li><a href="#notes">Notes</a></li>
+        <li><a href="#see-also">See also</a></li>
+      </ul>
+    </aside>
+
+    <article>
+
+      <section id="name">
+        <h2>Name <a class="anchor" href="#name">#</a></h2>
+        <p><strong>whoisd</strong> — One Ring multi-RIR WHOIS server.</p>
+      </section>
+
+      <section id="synopsis">
+        <h2>Synopsis <a class="anchor" href="#synopsis">#</a></h2>
+<pre><code><strong>whoisd</strong> [<strong>-c</strong> <em>file</em> | <strong>--config</strong> <em>file</em>]
+       [<strong>-s</strong> | <strong>--stats</strong>] [<strong>-r</strong> | <strong>--reload</strong>]
+       [<strong>-v</strong> | <strong>--version</strong>] [<strong>-h</strong> | <strong>--help</strong>]</code></pre>
+      </section>
+
+      <section id="description">
+        <h2>Description <a class="anchor" href="#description">#</a></h2>
+        <p><strong>whoisd</strong> is a multi-core WHOIS server (RFC 3912) that downloads,
+          merges, and serves the bulk RPSL dumps of all five Regional Internet
+          Registries (RIPE, ARIN, APNIC, LACNIC, AFRINIC) from a single TCP endpoint.
+          One query reaches every registry regardless of which one owns the address
+          space.</p>
+        <p>The server keeps the merged database in memory, indexed by primary key,
+          NIC handle, domain name, and a 128-bit binary radix trie of IP prefixes
+          (longest-prefix-match returns the most specific allocation). Each upstream
+          is polled on a configurable cadence with conditional
+          <code>If-Modified-Since</code> requests, and the in-memory store is rebuilt
+          only when at least one source actually changed. A UTC time-of-day anchor
+          guarantees at least one fresh attempt around the RIRs' daily publish
+          window.</p>
+        <p>A live stats subsystem tracks every in-flight connection (source, query,
+          state, duration, bytes transferred) and dumps a JSON snapshot to disk on a
+          configurable cadence (sub-second supported). An optional embedded HTTP
+          listener serves both a single-file dashboard and the JSON for external
+          consumers.</p>
+      </section>
+
+      <section id="options">
+        <h2>Options <a class="anchor" href="#options">#</a></h2>
+        <dl class="opts">
+          <dt><strong>-c</strong> <em>file</em>, <strong>--config</strong> <em>file</em></dt>
+          <dd>Path to the YAML configuration file. <span class="default">Default: <code>/etc/whoisd.yaml</code>.</span></dd>
+
+          <dt><strong>-s</strong>, <strong>--stats</strong></dt>
+          <dd>Fetch the live status JSON from the running server's stats HTTP
+            listener (as configured by <code>stats.http_bind</code>) and print a
+            pretty, multi-column summary to standard output. The endpoint URL is
+            discovered from the same configuration file. Exits without starting the
+            server.</dd>
+
+          <dt><strong>-r</strong>, <strong>--reload</strong></dt>
+          <dd>Signal the running <strong>whoisd</strong> to reload its configuration.
+            Looks up the pid file (see <a href="#files">Files</a>) and sends
+            <code>SIGHUP</code>. Exits 0 on a successful signal delivery, 1 if no pid
+            file is found or the signal cannot be delivered. Does not wait for the
+            reload to complete on the daemon side — observe the result via the
+            daemon's log output or <code>whoisd --stats</code>.</dd>
+
+          <dt><strong>-v</strong>, <strong>--version</strong></dt>
+          <dd>Print the binary's version string and exit. The string uses a
+            two-number (<em>MAJOR.MINOR</em>) scheme and can be stamped at build
+            time via <code>go build -ldflags "-X main.Version=1.2"</code>.</dd>
+
+          <dt><strong>-h</strong>, <strong>--help</strong></dt>
+          <dd>Show the built-in usage summary and exit.</dd>
+        </dl>
+      </section>
+
+      <section id="configuration">
+        <h2>Configuration file <a class="anchor" href="#configuration">#</a></h2>
+        <p>The configuration file is YAML. All fields have sensible defaults; an
+          empty file is a valid configuration but you must enable at least one
+          source under <code>dbase.sources</code>. The top-level keys are
+          <code>server</code>, <code>dbase</code>, <code>acl</code>,
+          <code>rate_limit</code>, <code>stats</code>, and <code>log</code>.</p>
+
+        <h3 id="cfg-server"><code>server</code> <a class="anchor" href="#cfg-server">#</a></h3>
+        <dl class="opts">
+          <dt><strong>bind</strong></dt>
+          <dd>TCP listen address for the WHOIS protocol, in <code>host:port</code>
+            form. <span class="default">Default: <code>0.0.0.0:43</code>.</span>
+            Binding to port 43 requires either root or
+            <code>setcap cap_net_bind_service=+ep ./whoisd</code>.</dd>
+
+          <dt><strong>read_timeout</strong></dt>
+          <dd>Maximum time to wait for the client's query line.
+            <span class="default">Default: <code>5s</code>.</span></dd>
+
+          <dt><strong>write_timeout</strong></dt>
+          <dd>Maximum time spent writing the response.
+            <span class="default">Default: <code>30s</code>.</span></dd>
+
+          <dt><strong>max_concurrent</strong></dt>
+          <dd>Upper bound on concurrent in-flight queries. Excess clients receive
+            <code>%% server busy, try again</code>. <span class="default">Default:
+            <code>1024</code>.</span></dd>
+
+          <dt><strong>max_query_bytes</strong></dt>
+          <dd>Caps the query line length to defeat abusive clients.
+            <span class="default">Default: <code>512</code>.</span></dd>
+        </dl>
+
+        <h3 id="cfg-dbase"><code>dbase</code> <a class="anchor" href="#cfg-dbase">#</a></h3>
+        <dl class="opts">
+          <dt><strong>cache_dir</strong></dt>
+          <dd>Local directory where downloaded <code>*.gz</code> RIR dumps are
+            cached. One subdirectory per source.
+            <span class="default">Default: <code>./var/dbase</code>.</span></dd>
+
+          <dt><strong>poll_interval</strong></dt>
+          <dd>How often to ask each upstream "has anything changed?". Polls are
+            cheap because of conditional GETs.
+            <span class="default">Default: <code>1h</code>. Minimum: <code>30s</code>.</span></dd>
+
+          <dt><strong>daily_at</strong></dt>
+          <dd>UTC time-of-day (<code>HH:MM</code>) at which to schedule one
+            guaranteed refresh attempt per day. Picks up the RIRs' daily publishes
+            promptly even if <code>poll_interval</code> is long. Set to the empty
+            string (<code>""</code>) to disable the anchor.
+            <span class="default">Default: <code>02:00</code>.</span></dd>
+
+          <dt><strong>retry_on_failure</strong></dt>
+          <dd>Backoff applied between attempts after a refresh fails.
+            <span class="default">Default: <code>5m</code>.</span></dd>
+
+          <dt><strong>sources</strong></dt>
+          <dd>List of upstream databases to fetch and merge. Each entry is an
+            object with the following fields:
+            <ul class="plain">
+              <li><strong>name</strong> — symbolic name used as the per-source
+                cache subdirectory and in stats output (e.g. <code>ripe</code>,
+                <code>arin</code>).</li>
+              <li><strong>enabled</strong> — whether to fetch this source. Setting
+                any source to <code>false</code> skips it.</li>
+              <li><strong>format</strong> — <code>split</code> | <code>single</code>.
+                <code>split</code> fetches one <code>.gz</code> per RPSL class from
+                <code>${url}/${db_name}.db.${class}.gz</code> (RIPE, APNIC).
+                <code>single</code> fetches one large <code>.gz</code> directly from
+                <code>url</code> (ARIN, LACNIC, AFRINIC).</li>
+              <li><strong>url</strong> — directory URL for <code>split</code>, or
+                the full file URL for <code>single</code>.</li>
+              <li><strong>db_name</strong> — file-name prefix used by the
+                <code>split</code> format. Defaults to <code>name</code> if
+                omitted.</li>
+              <li><strong>classes</strong> — list of RPSL classes to fetch (only
+                meaningful for <code>split</code>). Typical full set: inetnum,
+                inet6num, route, route6, aut-num, as-block, as-set, domain, mntner,
+                organisation, person, role, irt, key-cert, filter-set, inet-rtr,
+                peering-set, route-set, rtr-set.</li>
+            </ul>
+          </dd>
+        </dl>
+
+        <h3 id="cfg-acl"><code>acl</code> <a class="anchor" href="#cfg-acl">#</a></h3>
+        <p>The ACL is a Binary Encoded Radix Tree (BERT) of CIDR prefixes covering
+          both IPv4 and IPv6 in one structure. The longest matching prefix wins.</p>
+        <dl class="opts">
+          <dt><strong>default</strong></dt>
+          <dd>Policy applied when no explicit allow/deny rule matches:
+            <code>allow</code> | <code>deny</code>.
+            <span class="default">Default: <code>allow</code>.</span></dd>
+
+          <dt><strong>allow</strong></dt>
+          <dd>List of CIDRs (or bare IPs interpreted as <code>/32</code>/<code>/128</code>)
+            that are permitted. Crucially, sources matched by an entry in
+            <code>allow</code> are also <strong>exempt from the rate limiter</strong>
+            (see <a href="#cfg-rate-limit"><code>rate_limit</code></a>). Sources
+            permitted only via the default policy are still rate-limited.</dd>
+
+          <dt><strong>deny</strong></dt>
+          <dd>List of CIDRs that are explicitly rejected with
+            <code>%% access denied by policy</code>.</dd>
+        </dl>
+        <p>The loopback prefixes <code>127.0.0.0/8</code> and <code>::1/128</code>
+          are always implicitly allowed (and rate-limit-exempt) so operators can
+          always reach the server locally.</p>
+
+        <h3 id="cfg-rate-limit"><code>rate_limit</code> <a class="anchor" href="#cfg-rate-limit">#</a></h3>
+        <p>Per-source token-bucket limiter. Source addresses are aggregated to a
+          configurable prefix length to prevent scanners from hiding in address
+          space.</p>
+        <dl class="opts">
+          <dt><strong>enabled</strong></dt>
+          <dd>Master switch. <span class="default">Default: <code>false</code>.</span></dd>
+
+          <dt><strong>rps</strong></dt>
+          <dd>Sustained queries per second per aggregated source. Required when
+            <code>enabled</code> is true.</dd>
+
+          <dt><strong>burst</strong></dt>
+          <dd>Token-bucket size above <code>rps</code> before throttling kicks in.
+            Required when <code>enabled</code> is true.</dd>
+
+          <dt><strong>v4_prefix</strong></dt>
+          <dd>Prefix length to aggregate IPv4 sources by (0–32).
+            <span class="default">Default: <code>32</code> (per-IP).</span>
+            Most operators want <code>24</code> to lump abusive subnets together.</dd>
+
+          <dt><strong>v6_prefix</strong></dt>
+          <dd>Prefix length to aggregate IPv6 sources by (0–128).
+            <span class="default">Default: <code>128</code>.</span>
+            Typical: <code>48</code>.</dd>
+
+          <dt><strong>idle_ttl</strong></dt>
+          <dd>How long an idle per-source bucket lives in memory before garbage
+            collection. <span class="default">Default: <code>10m</code>.</span></dd>
+        </dl>
+
+        <h3 id="cfg-stats"><code>stats</code> <a class="anchor" href="#cfg-stats">#</a></h3>
+        <dl class="opts">
+          <dt><strong>enabled</strong></dt>
+          <dd>Master switch for the stats subsystem (counters, live connection
+            registry, JSON dumps, optional HTTP listener).
+            <span class="default">Default: <code>false</code>.</span></dd>
+
+          <dt><strong>dump_path</strong></dt>
+          <dd>Path of the JSON file rewritten atomically every
+            <code>dump_interval</code>. Empty disables the disk dump. The HTTP
+            listener can still serve in-memory snapshots even with no disk dump
+            configured.</dd>
+
+          <dt><strong>dump_interval</strong></dt>
+          <dd>Cadence at which the snapshot is regenerated and (optionally) flushed
+            to disk. Sub-second values are allowed (<code>"200ms"</code>,
+            <code>"500ms"</code>). Minimum: <code>50ms</code>.
+            <span class="default">Default: <code>1s</code>.</span></dd>
+
+          <dt><strong>http_bind</strong></dt>
+          <dd>TCP listen address for the embedded HTTP dashboard. Serves
+            <code>GET /</code> (single-file HTML dashboard) and
+            <code>GET /stats.json</code> (current snapshot). Empty disables the
+            listener.</dd>
+        </dl>
+
+        <h3 id="cfg-log"><code>log</code> <a class="anchor" href="#cfg-log">#</a></h3>
+        <dl class="opts">
+          <dt><strong>level</strong></dt>
+          <dd>Verbosity. One of <code>debug</code>, <code>info</code>,
+            <code>warn</code>, <code>error</code>, or <code>none</code> (also
+            accepts <code>off</code> or <code>silent</code>). Each level includes
+            everything above it. <span class="default">Default: <code>info</code>.</span></dd>
+        </dl>
+        <p>A small set of lifecycle events (server starting with version, each
+          listener bind, each (re)load completion) is logged at a custom
+          <strong>NOTICE</strong> level above <code>error</code>, so it is emitted
+          regardless of the configured filter except <code>none</code>.</p>
+      </section>
+
+      <section id="signals">
+        <h2>Signals <a class="anchor" href="#signals">#</a></h2>
+        <dl class="opts">
+          <dt><strong>SIGHUP</strong></dt>
+          <dd>Re-read the configuration file and apply the
+            <strong>reloadable subset</strong>: <code>acl.*</code>,
+            <code>rate_limit.*</code>, <code>log.level</code>,
+            <code>stats.dump_interval</code>, and <code>server.bind</code>. Each
+            sub-step is independent — a failure in one is logged and skipped, the
+            others still apply. Changes to fields outside this subset (notably
+            <code>dbase.*</code>, the <code>server</code> deadlines, and
+            <code>server.max_concurrent</code>) require a full restart. The same
+            effect is available from the CLI via <code>whoisd --reload</code>.</dd>
+
+          <dt><strong>SIGINT, SIGTERM</strong></dt>
+          <dd>Initiate a graceful shutdown: stops accepting new connections, waits
+            for in-flight queries to finish, flushes the final stats snapshot, and
+            exits.</dd>
+        </dl>
+      </section>
+
+      <section id="files">
+        <h2>Files <a class="anchor" href="#files">#</a></h2>
+        <dl class="opts">
+          <dt><code>/etc/whoisd.yaml</code></dt>
+          <dd>Default configuration file location (override with <code>-c</code>).</dd>
+
+          <dt><em>cache_dir</em>/<em>source</em>/<em>source</em>.db.<em>class</em>.gz</dt>
+          <dd>Cached RIR dumps. Each enabled source has its own subdirectory; the
+            file naming mirrors the upstream layout (or just
+            <em>source</em>.db.gz for single-file formats).</dd>
+
+          <dt><em>dump_path</em></dt>
+          <dd>The current stats JSON snapshot, atomically rewritten every
+            <code>dump_interval</code>.</dd>
+
+          <dt><code>/run/whoisd.pid</code>, <code>/var/run/whoisd.pid</code>,
+            <code>/var/whoisd/whoisd.pid</code>, <code>/tmp/whoisd.pid</code></dt>
+          <dd>Pid file locations, tried in order. On startup <strong>whoisd</strong>
+            writes its pid to the first parent directory that exists and is
+            writable. <code>whoisd --reload</code> reads back the first existing
+            file to find the running instance.</dd>
+        </dl>
+      </section>
+
+      <section id="exit-status">
+        <h2>Exit status <a class="anchor" href="#exit-status">#</a></h2>
+        <dl class="opts">
+          <dt><strong>0</strong></dt>
+          <dd>Clean shutdown after SIGINT/SIGTERM, or a successful one-shot
+            operation (<code>--version</code>, <code>--stats</code>,
+            <code>--reload</code>).</dd>
+          <dt><strong>1</strong></dt>
+          <dd>Runtime failure: initial database load failed, the listener died, or
+            the server otherwise stopped on an error. Also returned by
+            <code>--stats</code> and <code>--reload</code> when they cannot reach
+            the running instance.</dd>
+          <dt><strong>2</strong></dt>
+          <dd>Startup failure: configuration could not be loaded, parsed,
+            validated, or the ACL could not be built.</dd>
+        </dl>
+      </section>
+
+      <section id="examples">
+        <h2>Examples <a class="anchor" href="#examples">#</a></h2>
+        <p>Run the server with a custom config:</p>
+<pre><code>whoisd --config /etc/whoisd.yaml</code></pre>
+
+        <p>Query the running server (default WHOIS client, port from
+          <code>server.bind</code>):</p>
+<pre><code>whois -h 127.0.0.1 -p 4343 8.8.8.8
+whois -h 127.0.0.1 -p 4343 AS3333
+whois -h 127.0.0.1 -p 4343 -- '-m 193.0.0.0/16'</code></pre>
+
+        <p>Inspect the live status without disturbing the server:</p>
+<pre><code>whoisd --stats</code></pre>
+
+        <p>Apply changes from the config file without a restart:</p>
+<pre><code>whoisd --reload          # or: kill -HUP $(pidof whoisd)</code></pre>
+
+        <p>Bind to the privileged port 43 without running as root:</p>
+<pre><code>setcap cap_net_bind_service=+ep /usr/local/bin/whoisd</code></pre>
+      </section>
+
+      <section id="notes">
+        <h2>Notes <a class="anchor" href="#notes">#</a></h2>
+        <p>Memory footprint scales with the size of the merged store. With all
+          five RIRs loaded, expect roughly 18–20 GiB resident. Startup time is
+          dominated by the initial download and parse; subsequent starts reuse the
+          on-disk cache and are bound by parse time alone.</p>
+        <p>During a reload-triggered re-index the resident set briefly spikes to
+          roughly 2× steady-state, because the new in-memory store is built
+          alongside the old one before an atomic swap.</p>
+        <p><strong>whoisd</strong> is a single static binary with no runtime
+          dependencies beyond the host operating system. It does not require a
+          database server, message broker, or external state store.</p>
+      </section>
+
+      <section id="see-also">
+        <h2>See also <a class="anchor" href="#see-also">#</a></h2>
+        <p><code>whois(1)</code>, <code>yaml(5)</code></p>
+        <p>RIPE Database split-format documentation:
+          <a href="https://ftp.ripe.net/ripe/dbase/split/">https://ftp.ripe.net/ripe/dbase/split/</a></p>
+        <p>Project home:
+          <a href="https://github.com/hackman/One_Ring">https://github.com/hackman/One_Ring</a></p>
+      </section>
+
+    </article>
+  </div>
+
+  <footer>
+    Source: <a href="https://github.com/hackman/One_Ring/blob/main/whoisd.8">whoisd.8</a>
+    · <a href="./index.html">back to the landing page</a>
+    · <a href="https://github.com/hackman/One_Ring/issues">report an issue</a>
+  </footer>
+</main>
+
+</body>
+</html>
