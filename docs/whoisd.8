@@ -116,6 +116,17 @@ Default:
 .B max_query_bytes
 Caps the query line length to defeat abusive clients. Default:
 .BR 512 .
+.TP
+.B pid_file
+Path the daemon writes its pid to on startup, and that
+.B whoisd \-\-reload
+reads to locate the running instance. The parent directory is created
+(0755) if missing. Set to the empty string to disable pid-file management
+entirely (e.g. when running under a supervisor that owns the pid via other
+means);
+.B \-\-reload
+then has nothing to signal. Default:
+.IR /run/whoisd.pid .
 
 .SS dbase
 .TP
@@ -365,12 +376,11 @@ for single-file formats).
 The current stats JSON snapshot, atomically rewritten every
 .BR dump_interval .
 .TP
-.IR /run/whoisd.pid ", " /var/run/whoisd.pid ", " /var/whoisd/whoisd.pid ", " /tmp/whoisd.pid
-Pid file locations, tried in order. On startup
-.B whoisd
-writes its pid to the first parent directory that exists and is writable.
-.B whoisd \-\-reload
-reads back the first existing file to find the running instance.
+.I server.pid_file
+Configurable pid file path. Written on startup and read back by
+.BR "whoisd \-\-reload" .
+Default:
+.IR /run/whoisd.pid .
 
 .SH EXIT STATUS
 .TP

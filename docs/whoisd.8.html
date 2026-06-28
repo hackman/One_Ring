@@ -389,6 +389,15 @@
           <dt><strong>max_query_bytes</strong></dt>
           <dd>Caps the query line length to defeat abusive clients.
             <span class="default">Default: <code>512</code>.</span></dd>
+
+          <dt><strong>pid_file</strong></dt>
+          <dd>Path the daemon writes its pid to on startup, and that
+            <code>whoisd --reload</code> reads to locate the running instance.
+            The parent directory is created (<code>0755</code>) if missing. Set
+            to the empty string to disable pid-file management entirely (e.g.
+            when running under a supervisor that owns the pid via other means);
+            <code>--reload</code> then has nothing to signal.
+            <span class="default">Default: <code>/run/whoisd.pid</code>.</span></dd>
         </dl>
 
         <h3 id="cfg-dbase"><code>dbase</code> <a class="anchor" href="#cfg-dbase">#</a></h3>
@@ -573,12 +582,10 @@
           <dd>The current stats JSON snapshot, atomically rewritten every
             <code>dump_interval</code>.</dd>
 
-          <dt><code>/run/whoisd.pid</code>, <code>/var/run/whoisd.pid</code>,
-            <code>/var/whoisd/whoisd.pid</code>, <code>/tmp/whoisd.pid</code></dt>
-          <dd>Pid file locations, tried in order. On startup <strong>whoisd</strong>
-            writes its pid to the first parent directory that exists and is
-            writable. <code>whoisd --reload</code> reads back the first existing
-            file to find the running instance.</dd>
+          <dt><em>server.pid_file</em></dt>
+          <dd>Configurable pid file path. Written on startup and read back by
+            <code>whoisd --reload</code>.
+            <span class="default">Default: <code>/run/whoisd.pid</code>.</span></dd>
         </dl>
       </section>
 

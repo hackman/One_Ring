@@ -32,66 +32,64 @@ import (
 	"github.com/hackman/One_Ring/internal/stats"
 )
 
-// pidFilePaths are tried in order when locating the running pid. The first
-// one that exists wins. Match this list to whatever your packaging uses.
-var pidFilePaths = []string{
-	"/run/whoisd.pid",
-	"/var/run/whoisd.pid",
-	"/var/whoisd/whoisd.pid",
-	"/tmp/whoisd.pid",
-}
-
-// writePidFile writes the current process id to the first pid file path
-// whose parent directory exists and is writable. Returns nil if no
-// writable location is found — we keep running without one in that case.
-func writePidFile() error {
-	for _, p := range pidFilePaths {
-		dir := filepath.Dir(p)
-		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-			if err := os.WriteFile(p, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o644); err == nil {
-				return nil
-			}
-		}
-	}
-	return fmt.Errorf("no writable pid file location (tried %v)", pidFilePaths)
-}
-
-func removePidFile() {
-	for _, p := range pidFilePaths {
-		if data, err := os.ReadFile(p); err == nil {
-			if pid, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
-				if pid == os.Getpid() {
-					_ = os.Remove(p)
-					return
-				}
-			}
-		}
-	}
-}
-
-// sendReload looks up the running whoisd pid (via one of pidFilePaths) and
-// sends SIGHUP to it. Called from the CLI when -r/--reload is passed.
-func sendReload() error {
-	for _, p := range pidFilePaths {
-		data, err := os.ReadFile(p)
-		if err != nil {
-			continue
-		}
-		pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-		if err != nil {
-			return fmt.Errorf("%s: malformed pid: %w", p, err)
-		}
-		proc, err := os.FindProcess(pid)
-		if err != nil {
-			return fmt.Errorf("pid %d: %w", pid, err)
-		}
-		if err := proc.Signal(syscall.SIGHUP); err != nil {
-			return fmt.Errorf("kill -HUP %d: %w", pid, err)
-		}
-		fmt.Printf("sent SIGHUP to pid %d (%s)\n", pid, p)
+// writePidFile writes the current process id to path. A non-existent parent
+// directory is created (0o755). An empty path disables pid-file management
+// — useful when the daemon runs under a supervisor that owns the pid via
+// other means.
+func writePidFile(path string) error {
+	if path == "" {
 		return nil
 	}
-	return fmt.Errorf("no pid file found; tried %v", pidFilePaths)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("pid dir %s: %w", dir, err)
+	}
+	if err := os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
+
+// removePidFile removes the pid file at path if it still contains our pid.
+// Safe to call when the file never existed.
+func removePidFile(path string) {
+	if path == "" {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid != os.Getpid() {
+		return
+	}
+	_ = os.Remove(path)
+}
+
+// sendReload reads the configured pid file and sends SIGHUP to whatever
+// process is recorded there. Called from the CLI when -r/--reload is given.
+func sendReload(pidFile string) error {
+	if pidFile == "" {
+		return fmt.Errorf("server.pid_file is empty in the config; nothing to signal")
+	}
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		return fmt.Errorf("%s: %w (is whoisd running?)", pidFile, err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return fmt.Errorf("%s: malformed pid: %w", pidFile, err)
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("pid %d: %w", pid, err)
+	}
+	if err := proc.Signal(syscall.SIGHUP); err != nil {
+		return fmt.Errorf("kill -HUP %d: %w", pid, err)
+	}
+	fmt.Printf("sent SIGHUP to pid %d (%s)\n", pid, pidFile)
+	return nil
 }
 
 // reloadLoop waits for SIGHUP and applies the reloadable subset of the

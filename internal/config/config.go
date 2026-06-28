@@ -70,6 +70,10 @@ type ServerConfig struct {
 	WriteTimeout  time.Duration `yaml:"write_timeout"`
 	MaxConcurrent int           `yaml:"max_concurrent"`
 	MaxQueryBytes int           `yaml:"max_query_bytes"`
+	// PidFile is the path the daemon writes its pid to on startup, and that
+	// `whoisd --reload` reads to locate the running instance. Empty disables
+	// pid-file management entirely.
+	PidFile string `yaml:"pid_file"`
 }
 
 // DbaseConfig holds the upstream-database polling settings shared across all
@@ -152,6 +156,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Server.MaxQueryBytes == 0 {
 		c.Server.MaxQueryBytes = 512
+	}
+	if c.Server.PidFile == "" {
+		c.Server.PidFile = "/run/whoisd.pid"
 	}
 	if c.Dbase.CacheDir == "" {
 		c.Dbase.CacheDir = "./var/dbase"

@@ -7,6 +7,10 @@ server:
   write_timeout: "30s"
   max_concurrent: 1024
   max_query_bytes: 512
+  # The pid file written on startup and read by `whoisd --reload`. The
+  # parent directory is created if missing. Set to "" to disable pid-file
+  # management entirely (the --reload CLI flag won't work in that case).
+  pid_file: "/run/whoisd.pid"
 
 dbase:
   cache_dir: "/var/whoisd"

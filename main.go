@@ -79,7 +79,7 @@ func main() {
 		return
 	}
 	if reloadFlag {
-		if err := sendReload(); err != nil {
+		if err := sendReload(cfg.Server.PidFile); err != nil {
 			fmt.Fprintf(os.Stderr, "reload: %v\n", err)
 			os.Exit(1)
 		}
@@ -92,10 +92,10 @@ func main() {
 
 	// Write the pid file as soon as we have a logger to report errors. This
 	// is what `whoisd --reload` will look up to find the running instance.
-	if err := writePidFile(); err != nil {
+	if err := writePidFile(cfg.Server.PidFile); err != nil {
 		logger.Warn("pid file", "err", err)
 	}
-	defer removePidFile()
+	defer removePidFile(cfg.Server.PidFile)
 
 	logx.Notice(logger, "whoisd starting",
 		"version", Version,
