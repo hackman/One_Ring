@@ -138,8 +138,8 @@ func main() {
 					if t := manager.LastReload(); !t.IsZero() {
 						s.RIPELoaded = t.UTC().Format(time.RFC3339)
 					}
-					s.RIPEClasses = manager.Current().Counts()
-					s.SourceCounts = manager.Current().CountsBySource()
+					s.RIPEClasses = manager.Counts()
+					s.SourceCounts = manager.CountsBySource()
 				})
 			},
 		}
@@ -303,7 +303,7 @@ func refresh(ctx context.Context, cfg *config.Config, mgr *ripe.Manager, log *sl
 			"elapsed", time.Since(t0),
 			"changed_files", changed,
 			"total_files", len(fetched),
-			"per_source", mgr.Current().CountsBySource(),
+			"per_source", mgr.CountsBySource(),
 		)
 	} else {
 		log.Info("dbase poll: no changes",

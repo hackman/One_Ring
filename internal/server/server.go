@@ -347,8 +347,7 @@ func parseQuery(line string) (string, queryFlags) {
 
 // answer returns (response text, number of objects returned).
 func (s *Server) answer(query string, flags queryFlags) (string, int) {
-	store := s.store.Current()
-	objs := store.Lookup(query)
+	objs := s.store.Lookup(query)
 	if len(objs) == 0 {
 		return fmt.Sprintf("%% No entries found for the selected source(s).\n%% Query: %s\n", query), 0
 	}
@@ -369,7 +368,7 @@ func (s *Server) answer(query string, flags queryFlags) (string, int) {
 	}
 	n := len(picked)
 	if !flags.primaryOnly {
-		n += writeRelated(&b, store, picked)
+		n += writeRelated(&b, s.store, picked)
 	}
 	return b.String(), n
 }
@@ -399,7 +398,7 @@ func pick(query string, objs []*ripe.Object, flags queryFlags) []*ripe.Object {
 // The four contact-handle attributes are pre-extracted into Object.Handles
 // during parsing, so this hot path reads them as direct field access
 // instead of scanning Raw on every query.
-func writeRelated(b *strings.Builder, store *ripe.Store, objs []*ripe.Object) int {
+func writeRelated(b *strings.Builder, mgr *ripe.Manager, objs []*ripe.Object) int {
 	seen := make(map[string]bool)
 	added := 0
 	for _, o := range objs {
@@ -410,7 +409,7 @@ func writeRelated(b *strings.Builder, store *ripe.Store, objs []*ripe.Object) in
 					continue
 				}
 				seen[h] = true
-				related := store.Lookup(h)
+				related := mgr.Lookup(h)
 				for _, r := range related {
 					b.WriteByte('\n')
 					b.WriteString(r.Raw)

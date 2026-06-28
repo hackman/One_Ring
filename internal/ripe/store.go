@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -403,45 +405,102 @@ func addrAddOne(a netip.Addr) netip.Addr {
 }
 
 // -----------------------------------------------------------------------------
-// Manager: load + atomic swap
+// Manager: per-source Stores + reload with atomic per-source swap
 // -----------------------------------------------------------------------------
 
-// Manager owns the current Store and supports atomic reloads.
+// Manager owns one Store per upstream source. Per-source isolation lets
+// reload rebuild only the sources whose files actually changed — the rest
+// keep their existing sub-store live without touching the heap. This caps
+// the rebuild peak at "steady-state + size of the largest changed source"
+// instead of the previous "2 × steady-state".
+//
+// All Lookup-style methods iterate every source and concatenate results.
+// Since RIRs partition the IP address space, the per-source longest-prefix
+// match across tries still yields a correct global answer for IP queries;
+// for primary-key, NIC handle and domain lookups the same object id can
+// legitimately exist in two sources and we return both.
 type Manager struct {
 	mu         sync.RWMutex
-	cur        *Store
+	sources    map[string]*Store // keyed by source name (e.g. "ripe")
 	lastReload time.Time
 	log        *slog.Logger
 }
 
 func NewManager(log *slog.Logger) *Manager {
-	return &Manager{cur: NewStore(), log: log}
+	return &Manager{sources: make(map[string]*Store), log: log}
 }
 
-// Current returns the active Store. Callers may hold the returned pointer for
-// the duration of one query.
-func (m *Manager) Current() *Store {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.cur
-}
-
-// LastReload reports when the active Store was constructed.
+// LastReload reports when the most recent (re)load finished.
 func (m *Manager) LastReload() time.Time {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.lastReload
 }
 
-// IsEmpty reports whether the active Store has not been populated.
+// IsEmpty reports whether no sources have been loaded yet.
 func (m *Manager) IsEmpty() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return len(m.cur.byKey) == 0
+	for _, s := range m.sources {
+		if len(s.byKey) > 0 {
+			return false
+		}
+	}
+	return true
 }
 
-// LoadFromFiles is a convenience for tests: it builds a SourceFile list with
-// Changed=true and force-rebuilds the store.
+// snapshot returns a stable slice of (source, *Store) pairs for iteration
+// without holding the mutex. Sub-Stores are immutable once installed.
+func (m *Manager) snapshot() []*Store {
+	m.mu.RLock()
+	out := make([]*Store, 0, len(m.sources))
+	for _, s := range m.sources {
+		out = append(out, s)
+	}
+	m.mu.RUnlock()
+	return out
+}
+
+// Lookup dispatches q to every per-source store and concatenates the
+// results. Returns nil if no source matched.
+func (m *Manager) Lookup(q string) []*Object {
+	var out []*Object
+	for _, s := range m.snapshot() {
+		if got := s.Lookup(q); len(got) > 0 {
+			out = append(out, got...)
+		}
+	}
+	return out
+}
+
+// Counts returns the aggregate per-class count across all sources.
+func (m *Manager) Counts() map[string]int {
+	out := make(map[string]int)
+	for _, s := range m.snapshot() {
+		for k, v := range s.counts {
+			out[k] += v
+		}
+	}
+	return out
+}
+
+// CountsBySource returns (source -> object count) across all loaded sources.
+func (m *Manager) CountsBySource() map[string]int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make(map[string]int, len(m.sources))
+	for name, s := range m.sources {
+		total := 0
+		for _, v := range s.countsBySource {
+			total += v
+		}
+		out[name] = total
+	}
+	return out
+}
+
+// LoadFromFiles is a test convenience: build a single source from the
+// supplied paths and install it.
 func (m *Manager) LoadFromFiles(ctx context.Context, source string, paths []string) error {
 	wrapped := make([]SourceFile, 0, len(paths))
 	for _, p := range paths {
@@ -451,74 +510,116 @@ func (m *Manager) LoadFromFiles(ctx context.Context, source string, paths []stri
 	return err
 }
 
-// Reload (re)builds the Store from fetched files spanning one or more
-// upstream sources.
+// Reload rebuilds the per-source stores from `fetched`.
 //
-// If forceRebuild is false and none of the files has Changed=true AND the
-// manager already has a populated Store, this is a no-op and the returned
-// bool is false. That lets the polling loop run cheaply when every upstream
-// returns 304.
+// Per-source isolation: files are grouped by `SourceFile.Source` and each
+// source is processed independently. A source whose files all returned 304
+// (Changed=false) and that already has a live sub-store is skipped — its
+// existing sub-store remains in place. Only sources with at least one
+// changed file (or that are not yet loaded) are rebuilt.
+//
+// Each rebuilt source is atomically swapped in as soon as it's done, and a
+// GC + FreeOSMemory cycle is run between sources so the OS reclaims pages
+// from the just-replaced old sub-store before the next rebuild starts.
+//
+// Returns true if at least one source was rebuilt.
 func (m *Manager) Reload(ctx context.Context, fetched []SourceFile, forceRebuild bool) (bool, error) {
-	anyChanged := false
-	for _, r := range fetched {
-		if r.Changed {
-			anyChanged = true
-			break
+	bySource := map[string][]SourceFile{}
+	sourceChanged := map[string]bool{}
+	for _, f := range fetched {
+		bySource[f.Source] = append(bySource[f.Source], f)
+		if f.Changed {
+			sourceChanged[f.Source] = true
 		}
 	}
-	if !forceRebuild && !anyChanged && !m.IsEmpty() {
-		m.log.Debug("dbase reload skipped (no changes)")
-		return false, nil
+
+	// Fast no-op path: if nothing changed AND every fetched source already
+	// has a sub-store, there's no work to do.
+	if !forceRebuild {
+		needWork := false
+		m.mu.RLock()
+		for src := range bySource {
+			if sourceChanged[src] {
+				needWork = true
+				break
+			}
+			if _, ok := m.sources[src]; !ok {
+				needWork = true
+				break
+			}
+		}
+		m.mu.RUnlock()
+		if !needWork {
+			m.log.Debug("dbase reload skipped (no changes)")
+			return false, nil
+		}
 	}
 
-	s := NewStore()
-	var (
-		mu   sync.Mutex
-		errs []error
-		wg   sync.WaitGroup
-		sem  = make(chan struct{}, 4)
-	)
-	for _, r := range fetched {
-		r := r
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+	rebuilt := false
+	var firstErr error
+	for source, files := range bySource {
+		// Skip unchanged sources whose sub-store is already loaded.
+		if !forceRebuild && !sourceChanged[source] {
+			m.mu.RLock()
+			_, alreadyLoaded := m.sources[source]
+			m.mu.RUnlock()
+			if alreadyLoaded {
+				continue
+			}
+		}
 
-			// Stream parsed objects straight into the store. The earlier
-			// version buffered a []*Object per file (~hundreds of thousands
-			// of pointers, plus the unattached Object graph) before any
-			// Insert ran — wasted 1-2 GiB of peak memory during reload on a
-			// 5-DB load. Now each object is indexed and immediately
-			// available for GC of any transient parse state.
-			count := 0
-			err := Parse(ctx, r.Path, func(o *Object) error {
-				mu.Lock()
-				s.Insert(o, r.Source)
-				mu.Unlock()
+		newSub := NewStore()
+		count := 0
+		var perr error
+		for _, f := range files {
+			err := Parse(ctx, f.Path, func(o *Object) error {
+				newSub.Insert(o, source)
 				count++
 				return nil
 			})
 			if err != nil {
-				mu.Lock()
-				errs = append(errs, fmt.Errorf("%s/%s: %w", r.Source, r.Class, err))
-				mu.Unlock()
-				return
+				perr = fmt.Errorf("%s/%s: %w", source, f.Class, err)
+				break
 			}
 			m.log.Info("dbase file loaded",
-				"source", r.Source,
-				"class", r.Class,
-				"objects", count)
-		}()
+				"source", source, "class", f.Class, "file_objects", count)
+		}
+		if perr != nil {
+			if firstErr == nil {
+				firstErr = perr
+			}
+			// Don't swap a partial sub-store; keep the old one in place.
+			m.log.Warn("dbase source rebuild failed; old sub-store kept",
+				"source", source, "err", perr)
+			continue
+		}
+
+		// Atomic per-source swap.
+		m.mu.Lock()
+		m.sources[source] = newSub
+		m.mu.Unlock()
+		m.log.Info("dbase source swapped", "source", source, "objects", count)
+		rebuilt = true
+
+		// Give the runtime a chance to release the old sub-store back to
+		// the OS before we start building the next one. Without this,
+		// each new sub-store accumulates on top of the prior dead one and
+		// peak RSS climbs across sources unnecessarily.
+		runtime.GC()
+		debug.FreeOSMemory()
 	}
-	wg.Wait()
-	if len(errs) > 0 {
-		return false, errs[0]
+
+	if rebuilt {
+		m.mu.Lock()
+		m.lastReload = time.Now()
+		m.mu.Unlock()
+		// One final GC pass once everything is in place, so RSS settles
+		// promptly rather than waiting for the next allocation cycle.
+		runtime.GC()
+		debug.FreeOSMemory()
 	}
-	m.mu.Lock()
-	m.cur = s
-	m.lastReload = time.Now()
-	m.mu.Unlock()
-	return true, nil
+	if firstErr != nil && !rebuilt {
+		return false, firstErr
+	}
+	return rebuilt, nil
 }
