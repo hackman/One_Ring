@@ -14,7 +14,7 @@
 # development process.
 
 BINARY  := whoisd
-VERSION ?= 3.1
+VERSION ?= 4.0
 LDFLAGS := -ldflags "-X main.Version=$(VERSION)"
 RELEASE_DIR := one-ring-${VERSION}
 RELEASE_FILE := one-ring-${VERSION}.tgz

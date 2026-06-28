@@ -213,9 +213,10 @@
       <div class="sub" id="liveSub">peak —</div>
     </div>
     <div class="card">
-      <div class="label">Queries / sec (60s)</div>
-      <div class="value accent2" id="qps">0.0</div>
+      <div class="label">Queries / sec</div>
+      <div class="value accent2" id="qps">0</div>
       <svg class="qps-spark" id="spark" preserveAspectRatio="none"></svg>
+      <div class="sub" id="qpsSub">last 60 s</div>
     </div>
     <div class="card">
       <div class="label">Total queries</div>
@@ -336,7 +337,12 @@
     })[c]);
   }
 
-  // QPS sparkline history (in-memory, not persisted).
+  // The server returns a single recent_qps value (the count of queries
+  // completed in the most recent fully-elapsed Unix second). The graph is
+  // built entirely client-side: each successful poll appends one bar to
+  // sparkHistory and the oldest is dropped once we exceed SPARK_LEN.
+  // This keeps the server JSON minimal and lets the operator's chosen
+  // poll interval dictate the visible time window.
   const sparkHistory = [];
   const SPARK_LEN = 60;
 
@@ -376,10 +382,13 @@
     $("live").textContent = fmt.format(liveCount);
     $("liveSub").textContent = "peak " + peakLive;
 
-    $("qps").textContent = fmt1.format(d.recent_qps || 0);
-    sparkHistory.push(d.recent_qps || 0);
+    const qps = d.recent_qps || 0;
+    $("qps").textContent = fmt.format(qps);
+    sparkHistory.push(qps);
     if (sparkHistory.length > SPARK_LEN) sparkHistory.shift();
-    drawSpark();
+    $("qpsSub").textContent = "last " + sparkHistory.length + " poll" +
+      (sparkHistory.length === 1 ? "" : "s");
+    drawSpark(sparkHistory);
 
     $("qtotal").textContent = fmt.format(d.counters.queries_total);
     $("qhit").textContent   = fmt.format(d.counters.queries_hit);
@@ -453,24 +462,27 @@
     ).join("");
   }
 
-  function drawSpark() {
+  // drawSpark renders the server-provided per-second QPS array as a
+  // bar-style sparkline. Each bar is one Unix second; the right edge is
+  // the most recent completed second. No smoothing is applied — when
+  // traffic stops the next bar drops to zero immediately.
+  function drawSpark(history) {
     const svg = $("spark");
     const w = svg.clientWidth || 200;
     const h = svg.clientHeight || 32;
-    const n = sparkHistory.length;
-    if (n < 2) { svg.innerHTML = ""; return; }
-    const max = Math.max(1, ...sparkHistory);
-    const step = w / (SPARK_LEN - 1);
-    const pts = sparkHistory.map((v, i) => {
-      const x = (i + (SPARK_LEN - n)) * step;
-      const y = h - (v / max) * (h - 2) - 1;
-      return x.toFixed(1) + "," + y.toFixed(1);
-    });
-    const poly = pts.join(" ");
-    const area = `${(SPARK_LEN - n) * step},${h} ${poly} ${w},${h}`;
-    svg.innerHTML =
-      `<polyline points="${area}" fill="rgba(179,136,255,.18)" stroke="none"></polyline>` +
-      `<polyline points="${poly}" fill="none" stroke="#b388ff" stroke-width="1.6"></polyline>`;
+    const n = history.length;
+    if (n < 1) { svg.innerHTML = ""; return; }
+    const max = Math.max(1, ...history);
+    const barW = w / n;
+    let bars = "";
+    for (let i = 0; i < n; i++) {
+      const v = history[i] || 0;
+      const bh = Math.max(0, (v / max) * (h - 2));
+      const x = i * barW;
+      const y = h - bh;
+      bars += `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(barW - 0.5).toFixed(2)}" height="${bh.toFixed(2)}" fill="#b388ff" opacity="${v === 0 ? 0.18 : 0.85}"></rect>`;
+    }
+    svg.innerHTML = bars;
     svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
   }
 

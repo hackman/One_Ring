@@ -5,50 +5,49 @@ import (
 	"time"
 )
 
-// ringCounter is a 1-second-bucket sliding window of event counts. It is used
-// to compute a recent QPS without retaining individual timestamps.
+// ringCounter buckets event timestamps by Unix-second so we can read the
+// count for the most-recent completed second cheaply. Only the current
+// in-progress second and the one just before it are needed by callers, but
+// we keep a tiny ring (8 buckets) so a brief gap in advance() calls — for
+// example, if no tick happens for several seconds and then LastSecond is
+// read — still yields zero for those silent seconds.
 //
-// The implementation is intentionally simple: events are bucketed by Unix
-// second; tick() advances the head and zeros expired buckets lazily.
+// Total footprint: 8 × 4 = 32 bytes. There is no per-second history kept
+// here; the dashboard maintains its own polled-value buffer client-side.
 type ringCounter struct {
 	mu      sync.Mutex
-	buckets []uint32
+	buckets [8]uint32
 	headSec int64
-}
-
-func (r *ringCounter) init(sizeSeconds int) {
-	r.buckets = make([]uint32, sizeSeconds)
-	r.headSec = 0
 }
 
 func (r *ringCounter) tick(now time.Time) {
 	sec := now.Unix()
 	r.mu.Lock()
 	r.advance(sec)
-	r.buckets[int(sec%int64(len(r.buckets)))]++
+	r.buckets[r.idx(sec)]++
 	r.mu.Unlock()
 }
 
-// rate returns events per second averaged over the window (excluding the
-// current, possibly-partial second to keep the number stable).
-func (r *ringCounter) rate(now time.Time) float64 {
+// LastSecond returns the count of events that occurred during the most
+// recent COMPLETED Unix second (i.e. sec - 1 relative to now). The current,
+// in-progress second is deliberately excluded — its bucket is still being
+// updated and reading it would yield partial counts.
+func (r *ringCounter) LastSecond(now time.Time) uint32 {
 	sec := now.Unix()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.advance(sec)
-	var total uint64
-	n := len(r.buckets)
-	// Sum the past (n-1) buckets, skipping the current second.
-	for i := 1; i < n; i++ {
-		idx := int((sec - int64(i)) % int64(n))
-		if idx < 0 {
-			idx += n
-		}
-		total += uint64(r.buckets[idx])
-	}
-	return float64(total) / float64(n-1)
+	return r.buckets[r.idx(sec-1)]
 }
 
+func (r *ringCounter) idx(sec int64) int {
+	n := int64(len(r.buckets))
+	return int(((sec % n) + n) % n)
+}
+
+// advance zeros every bucket between the previously-seen second and now,
+// so silent seconds correctly read as 0 instead of stale data left over
+// from one full ring revolution ago.
 func (r *ringCounter) advance(sec int64) {
 	if r.headSec == 0 {
 		r.headSec = sec
@@ -65,11 +64,7 @@ func (r *ringCounter) advance(sec int64) {
 		}
 	} else {
 		for i := int64(1); i <= delta; i++ {
-			idx := int((r.headSec + i) % n)
-			if idx < 0 {
-				idx += int(n)
-			}
-			r.buckets[idx] = 0
+			r.buckets[r.idx(r.headSec+i)] = 0
 		}
 	}
 	r.headSec = sec

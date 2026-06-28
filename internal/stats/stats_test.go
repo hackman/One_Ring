@@ -59,19 +59,31 @@ func TestSnapshot_JSONShape(t *testing.T) {
 	}
 }
 
-func TestRing_Rate(t *testing.T) {
+func TestRing_LastSecond(t *testing.T) {
 	r := &ringCounter{}
-	r.init(5)
-	now := time.Unix(1000, 0)
-	// 8 events spread over the 4 previous seconds
+	now := time.Unix(2000, 0)
+	// 4 events at sec-1
 	for i := 0; i < 4; i++ {
-		r.tick(now.Add(time.Duration(-i-1) * time.Second))
-		r.tick(now.Add(time.Duration(-i-1) * time.Second))
+		r.tick(now.Add(-time.Second))
 	}
-	got := r.rate(now)
-	// 8 events / 4 historical buckets = 2.0
-	if got < 1.9 || got > 2.1 {
-		t.Errorf("rate = %v want ~2.0", got)
+	// 1 event in the CURRENT second — must NOT be counted by LastSecond.
+	r.tick(now)
+	if got := r.LastSecond(now); got != 4 {
+		t.Errorf("LastSecond=%d want 4", got)
+	}
+}
+
+func TestRing_DropsToZeroAfterTrafficStops(t *testing.T) {
+	r := &ringCounter{}
+	t0 := time.Unix(3000, 0)
+	for i := 0; i < 10; i++ {
+		r.tick(t0)
+	}
+	// Several seconds later — the previous-second bucket must read zero;
+	// no decay, no leftover smear.
+	now := t0.Add(6 * time.Second)
+	if got := r.LastSecond(now); got != 0 {
+		t.Errorf("LastSecond after silence=%d want 0", got)
 	}
 }
 

@@ -140,7 +140,8 @@ func NewRegistry() *Registry {
 		startedAt: time.Now(),
 		conns:     make(map[uint64]*Conn),
 	}
-	r.totals.qpsRing.init(60) // 60-second rolling window
+	// The ringCounter inside r.totals.qpsRing is fixed-size (8 buckets);
+	// no init required.
 	return r
 }
 
@@ -204,13 +205,18 @@ func (r *Registry) Close(c *Conn, classification string) {
 }
 
 // Snapshot is the JSON payload emitted to disk.
+//
+// RecentQPS is the raw count of queries that completed in the most recent
+// fully-elapsed Unix second — NOT a trailing average and NOT a per-second
+// history. Consumers that want a graph maintain their own buffer of polled
+// values client-side; the server intentionally keeps no history.
 type Snapshot struct {
 	Generated    string         `json:"generated_at"`
 	StartedAt    string         `json:"started_at"`
 	UptimeSec    float64        `json:"uptime_s"`
 	Live         []snapConn     `json:"live"`
 	Counters     sCounters      `json:"counters"`
-	RecentQPS    float64        `json:"recent_qps"`
+	RecentQPS    uint32         `json:"recent_qps"`
 	RIPELoaded   string         `json:"dbase_last_loaded,omitempty"`
 	RIPEClasses  map[string]int `json:"class_counts,omitempty"`
 	SourceCounts map[string]int `json:"source_counts,omitempty"`
@@ -261,7 +267,7 @@ func (r *Registry) Snapshot(extra func(*Snapshot)) *Snapshot {
 			BytesOut:        r.totals.bytesOut.Load(),
 			CurrentLive:     currentLive,
 		},
-		RecentQPS: r.totals.qpsRing.rate(now),
+		RecentQPS: r.totals.qpsRing.LastSecond(now),
 	}
 	if extra != nil {
 		extra(s)
